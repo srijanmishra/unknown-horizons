@@ -38,9 +38,10 @@ INSERT INTO "unit" VALUES('FarmAnimalCollector','collectors','FarmAnimalCollecto
 INSERT INTO "unit" VALUES('UsableFisher','ship','Ship',12.0,5,1000016);
 INSERT INTO "unit" VALUES('Cattle','animal','FarmAnimal',12.0,3,1000017);
 INSERT INTO "unit" VALUES('Boar','animal','FarmAnimal',12.0,5,1000018);
-INSERT INTO "unit" VALUES('Doctor','animal','FarmAnimal',12.0,5,1000019);
+INSERT INTO "unit" VALUES('Doctor','collectors','DisasterRecoveryCollector',12.0,5,1000019);
 INSERT INTO "unit" VALUES('Frigate','fightingship','FightingShip',12.0,5,1000020);
 INSERT INTO "unit" VALUES('BomberMan','groundunit','FightingGroundUnit',10.0,5,1000021);
+INSERT INTO "unit" VALUES('Firefighter','collectors','DisasterRecoveryCollector',12.0,5,1000022);
 CREATE TABLE "speech" ("group_id" INTEGER NOT NULL  DEFAULT 0 ,"file" TEXT NOT NULL );
 INSERT INTO "speech" VALUES(1,'content/audio/voice/map_creation/en/0.ogg');
 INSERT INTO "speech" VALUES(1,'content/audio/voice/map_creation/en/1.ogg');
@@ -541,7 +542,7 @@ INSERT INTO "resource" VALUES(0,'vines',2,57,1);
 INSERT INTO "resource" VALUES(1,'grapes',2.5,58,1);
 INSERT INTO "resource" VALUES(0,'alvearies',2,59,1);
 INSERT INTO "resource" VALUES(1,'honeycombs',2.5,60,1);
-
+INSERT INTO "resource" VALUES(0,'fire',0,99,0);
 CREATE TABLE translucent_buildings(type INTEGER);
 INSERT INTO "translucent_buildings" VALUES(17);
 INSERT INTO "translucent_buildings" VALUES(34);
@@ -591,6 +592,8 @@ INSERT INTO "settler_level" VALUES(5,'aristocrat',28,21,'manor');
 CREATE TABLE status_icon_exclusions (
     "object_type" INT NOT NULL DEFAULT (''));
 INSERT INTO "status_icon_exclusions" VALUES(17);
+INSERT INTO "status_icon_exclusions" VALUES(1);
+INSERT INTO "status_icon_exclusions" VALUES(5);
 INSERT INTO "status_icon_exclusions" VALUES(33);
 INSERT INTO "status_icon_exclusions" VALUES(15);
 INSERT INTO "status_icon_exclusions" VALUES(18);
@@ -599,3 +602,8 @@ INSERT INTO "status_icon_exclusions" VALUES(22);
 INSERT INTO "status_icon_exclusions" VALUES(36);
 INSERT INTO "status_icon_exclusions" VALUES(1000013);
 
+CREATE TABLE additional_provided_resources (
+    "object_id" INT NOT NULL,
+		"resource" INT NOT NULL
+	);
+INSERT INTO "additional_provided_resources" VALUES(3,42);

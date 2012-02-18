@@ -35,6 +35,7 @@ from horizons.savegamemanager import SavegameManager
 from horizons.gui.keylisteners import MainListener
 from horizons.gui.keylisteners.ingamekeylistener import KeyConfig
 from horizons.util import Callback
+from horizons.extscheduler import ExtScheduler
 from horizons.world.component.ambientsoundcomponent import AmbientSoundComponent
 from horizons.util.gui import LazyWidgetsDict
 from horizons.i18n.utils import N_
@@ -399,6 +400,9 @@ class Gui(SingleplayerMenu, MultiplayerMenu):
 		@return: True on ok, False on cancel (if no cancel button, always True)
 		"""
 		popup = self.build_popup(windowtitle, message, show_cancel_button, size=size)
+		# ok should be triggered on enter, therefore we need to focus the button
+		# pychan will only allow it after the widgets is shown
+		ExtScheduler().add_new_object(lambda : popup.findChild(name='okButton').requestFocus(), self, run_in=0)
 		if show_cancel_button:
 			return self.show_dialog(popup, {'okButton' : True, 'cancelButton' : False}, onPressEscape = False)
 		else:
@@ -513,7 +517,9 @@ class Gui(SingleplayerMenu, MultiplayerMenu):
 			savegame_info = SavegameManager.get_metadata(map_file)
 
 			# screenshot (len can be 0 if save failed in a weird way)
-			if savegame_info['screenshot'] is not None and len(savegame_info['screenshot']) > 0:
+			if 'screenshot' in savegame_info and \
+			   savegame_info['screenshot'] is not None and \
+			   len(savegame_info['screenshot']) > 0:
 				# try to find a writeable location, that is accessible via relative paths
 				# (required by fife)
 				fd, filename = tempfile.mkstemp()
@@ -545,7 +551,7 @@ class Gui(SingleplayerMenu, MultiplayerMenu):
 			else:
 				#xgettext:python-format
 				details_label.text += _("Saved at {time}").format(
-				                         time=time.strftime("%H:%M, %A, %B %d",
+				                         time=time.strftime("%c",
 				                         time.localtime(savegame_info['timestamp'])))
 			details_label.text += u'\n'
 			counter = savegame_info['savecounter']
