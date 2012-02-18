@@ -528,7 +528,7 @@ INSERT INTO "resource" VALUES(1,'cannon',100,40,1);
 INSERT INTO "resource" VALUES(0,'dagger',10,41,0);
 INSERT INTO "resource" VALUES(0,'grain',0,42,1); -- corn ears
 INSERT INTO "resource" VALUES(0,'corn',2,43,1);
-INSERT INTO "resource" VALUES(1,'flour',0,44,1);
+INSERT INTO "resource" VALUES(1,'flour',2.5,44,1);
 INSERT INTO "resource" VALUES(0,'spice plants',2,45,1);
 INSERT INTO "resource" VALUES(1,'spices',2.5,46,1);
 INSERT INTO "resource" VALUES(1,'condiments',10,47,1);
