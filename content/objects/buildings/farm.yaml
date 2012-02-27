@@ -20,6 +20,8 @@ components:
     enemy_tabs: [EnemyBuildingOverviewTab,]
 - HealthComponent: {maxhealth: 1000}
 - ProducerComponent:
+    utilisation:
+      FieldUtilisation
     productionlines:
       7:
         produces:
@@ -95,5 +97,9 @@ components:
             33: 6, 34: 6, 35: 6, 36: 6, 37: 6, 38: 6, 42: 6, 43: 6,
             45: 6, 46: 6, 53: 6, 54: 6, 57: 6, 58: 6, 59: 6, 60: 6,
             }
+- CollectingComponent:
+    collectors:
+      1000015: 1
+      1000009: 1
 actionsets:
   as_farm0: {level: 0}

@@ -1,6 +1,6 @@
 id: 48
 name: _ Bakery
-baseclass: production.Refiner
+baseclass: production.ProductionBuilding
 radius: 8
 cost: 20
 cost_inactive: 5

@@ -1,7 +1,7 @@
 id: 55
 #name: _ Carver
 name: _ Stonemason
-baseclass: production.Refiner
+baseclass: production.ProductionBuilding
 radius: 8
 cost: 15
 cost_inactive: 5

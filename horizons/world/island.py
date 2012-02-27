@@ -25,6 +25,7 @@ from horizons.entities import Entities
 from horizons.scheduler import Scheduler
 
 from horizons.util import WorldObject, Point, Rect, Circle, DbReader, random_map, BuildingIndexer
+from horizons.util.messaging.message import SettlementRangeChanged
 from settlement import Settlement
 from horizons.world.pathfinding.pathnodes import IslandPathNodes
 from horizons.constants import BUILDINGS, RES, UNITS
@@ -244,6 +245,7 @@ class Island(BuildingOwner, WorldObject):
 		@param radius:
 		@param settlement:
 		"""
+		settlement_tiles_changed = []
 		for coord in position.get_radius_coordinates(radius, include_self=True):
 			tile = self.get_tile_tuple(coord)
 			if tile is not None:
@@ -254,6 +256,7 @@ class Island(BuildingOwner, WorldObject):
 					settlement.ground_map[coord] = tile
 					Minimap.update(coord)
 					self._register_change(coord[0], coord[1])
+					settlement_tiles_changed.append(tile)
 
 					# notify all AI players when land ownership changes
 					for player in self.session.world.players:
@@ -268,6 +271,9 @@ class Island(BuildingOwner, WorldObject):
 					building.settlement = settlement
 					building.owner = settlement.owner
 					settlement.add_building(building)
+
+		if settlement_tiles_changed:
+			self.session.message_bus.broadcast(SettlementRangeChanged(settlement, settlement_tiles_changed))
 
 
 	def add_building(self, building, player, load=False):
@@ -402,3 +408,16 @@ class Island(BuildingOwner, WorldObject):
 					# building area with origin at coords affected
 					if coords in building_areas:
 						building_areas[coords] = self.last_change_id
+
+	def end(self):
+		# NOTE: killing animals before buildings is an optimisation, else they would
+		# keep searching for new trees every time a tree is torn down.
+		for wild_animal in (wild_animal for wild_animal in self.wild_animals):
+			wild_animal.remove()
+		super(Island, self).end()
+		for settlement in self.settlements:
+			settlement.end()
+		self.wild_animals = None
+		self.ground_map = None
+		self.path_nodes = None
+		self.building_indexers = None

@@ -107,7 +107,8 @@ class Server(object):
 		try:
 			self.host = enet.Host(enet.Address(self.hostname, self.port), MAX_PEERS, 0, 0, 0)
 		except (IOError, MemoryError):
-			raise network.NetworkException("Unable to create network structure. Maybe invalid or irresolvable server address.")
+			# these exceptions do not provide any information.
+			raise network.NetworkException("Unable to create network structure. Maybe invalid or irresolvable server address:")
 
 		logging.debug("Entering the main loop...")
 		while True:

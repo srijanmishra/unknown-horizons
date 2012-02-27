@@ -23,10 +23,9 @@
 from building import BasicBuilding
 from buildable import BuildableSingleOnOcean
 from horizons.world.building.buildingresourcehandler import BuildingResourceHandler
-from collectingbuilding import CollectingBuilding
 from horizons.world.component.storagecomponent import StorageComponent
 
-class BoatBuilder(CollectingBuilding, BuildableSingleOnOcean, BasicBuilding):
+class BoatBuilder(BuildingResourceHandler, BuildableSingleOnOcean, BasicBuilding):
 
 	def __init__(self, **kwargs):
 		super(BoatBuilder, self).__init__(**kwargs)
@@ -35,7 +34,7 @@ class BoatBuilder(CollectingBuilding, BuildableSingleOnOcean, BasicBuilding):
 		super(BoatBuilder, self).initialize( ** kwargs)
 		self.get_component(StorageComponent).inventory.limit = 10
 
-class Barracks(CollectingBuilding, BasicBuilding):
+class Barracks(BuildingResourceHandler, BasicBuilding):
 	"""
 	Dummy class for now. Ground combat unit production.
 	"""

@@ -41,6 +41,7 @@ from horizons.util.gui import LazyWidgetsDict
 from horizons.i18n.utils import N_
 
 from horizons.gui.modules import SingleplayerMenu, MultiplayerMenu
+from horizons.command.game import PauseCommand, UnPauseCommand
 
 class Gui(SingleplayerMenu, MultiplayerMenu):
 	"""This class handles all the out of game menu, like the main and pause menu, etc.
@@ -110,7 +111,7 @@ class Gui(SingleplayerMenu, MultiplayerMenu):
 			self.__pause_displayed = False
 			self.hide()
 			self.current = None
-			self.session.speed_unpause(True)
+			UnPauseCommand(suggestion=True).execute(self.session)
 			self.on_escape = self.toggle_pause
 
 		else:
@@ -162,7 +163,7 @@ class Gui(SingleplayerMenu, MultiplayerMenu):
 			self.current.additional_widget.show()
 			self.current.show()
 
-			self.session.speed_pause(True)
+			PauseCommand(suggestion=True).execute(self.session)
 			self.on_escape = self.toggle_pause
 
 # what happens on button clicks
@@ -187,7 +188,7 @@ class Gui(SingleplayerMenu, MultiplayerMenu):
 			self._help_is_displayed = True
 			# make game pause if there is a game and we're not in the main menu
 			if self.session is not None and self.current != self.widgets['ingamemenu']:
-				self.session.speed_pause()
+				PauseCommand().execute(self.session)
 			if self.session is not None:
 				self.session.ingame_gui.on_escape() # close dialogs that might be open
 			self.show_dialog(help_dlg, {'okButton' : True}, onPressEscape = True)
@@ -195,7 +196,7 @@ class Gui(SingleplayerMenu, MultiplayerMenu):
 		else:
 			self._help_is_displayed = False
 			if self.session is not None and self.current != self.widgets['ingamemenu']:
-				self.session.speed_unpause()
+				UnPauseCommand().execute(self.session)
 			help_dlg.hide()
 
 	def show_quit(self):
@@ -249,19 +250,32 @@ class Gui(SingleplayerMenu, MultiplayerMenu):
 			self.current_dialog.hide()
 		self.show_dialog(self.widgets['credits'+str(number)], {'okButton' : True}, onPressEscape = True)
 
-	def show_select_savegame(self, mode):
+	def show_select_savegame(self, mode, sanity_checker=None, sanity_criteria=None):
 		"""Shows menu to select a savegame.
-		@param mode: 'save' or 'load'
+		@param mode: 'save', 'load' or 'mp_load'
+		@param sanity_checker: only allow manually entered names that pass this test
+		@param sanity_criteria: explain which names are allowed to the user
 		@return: Path to savegamefile or None"""
-		assert mode in ('save', 'load')
+		assert mode in ('save', 'load', 'mp_load', 'mp_save')
 		map_files, map_file_display = None, None
+		mp = False
+		if mode.startswith('mp'):
+			mode = mode[3:]
+			mp = True
+			# below this line, mp_load == load, mp_save == save
 		if mode == 'load':
-			map_files, map_file_display = SavegameManager.get_saves()
+			if not mp:
+				map_files, map_file_display = SavegameManager.get_saves()
+			else:
+				map_files, map_file_display = SavegameManager.get_multiplayersaves()
 			if len(map_files) == 0:
 				self.show_popup(_("No saved games"), _("There are no saved games to load."))
 				return
 		else: # don't show autosave and quicksave on save
-			map_files, map_file_display = SavegameManager.get_regular_saves()
+			if not mp:
+				map_files, map_file_display = SavegameManager.get_regular_saves()
+			else:
+				map_files, map_file_display = SavegameManager.get_multiplayersaves()
 
 		# Prepare widget
 		old_current = self._switch_current_widget('select_savegame')
@@ -325,7 +339,7 @@ class Gui(SingleplayerMenu, MultiplayerMenu):
 		if mode == 'save': # return from textfield
 			selected_savegame = self.current.collectData('savegamefile')
 			if selected_savegame == "":
-				self.show_error_popup(windowtitle = _("No filename given"), description = _("Please enter a valid filename."),)
+				self.show_error_popup(windowtitle = _("No filename given"), description = _("Please enter a valid filename."))
 				self.current = old_current
 				return self.show_select_savegame(mode=mode) # reshow dialog
 			elif selected_savegame in map_file_display: # savegamename already exists
@@ -333,6 +347,11 @@ class Gui(SingleplayerMenu, MultiplayerMenu):
 				message = _("A savegame with the name '{name}' already exists.").format(
 				             name=selected_savegame) + u"\n" + _('Overwrite it?')
 				if not self.show_popup(_("Confirmation for overwriting"), message, show_cancel_button = True):
+					self.current = old_current
+					return self.show_select_savegame(mode=mode) # reshow dialog
+			elif sanity_checker and sanity_criteria:
+				if not sanity_checker(selected_savegame):
+					self.show_error_popup(windowtitle = _("Invalid filename given"), description = sanity_criteria)
 					self.current = old_current
 					return self.show_select_savegame(mode=mode) # reshow dialog
 		else: # return selected item from list

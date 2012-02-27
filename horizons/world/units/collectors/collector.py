@@ -233,7 +233,7 @@ class Collector(Unit):
 		"""Executes the necessary actions to begin a new job"""
 		self.job.object.add_incoming_collector(self)
 
-	@decorators.cachedmethod
+	#@decorators.cachedmethod TODO: replace this with a version that doesn't leak
 	def check_possible_job_target(self, target):
 		"""Checks our if we "are allowed" and able to pick up from the target"""
 		# Discard building if it works for same inventory (happens when both are storage buildings
@@ -347,7 +347,7 @@ class Collector(Unit):
 		if self.has_component(AmbientSoundComponent):
 			am_comp = self.get_component(AmbientSoundComponent)
 			if len(am_comp.soundfiles) > 0:
-				am_comp.play_ambient(am_comp.soundfiles[0], looping=False)
+				am_comp.play_ambient(am_comp.soundfiles[0], position=self.position)
 		self.state = self.states.working
 
 	def finish_working(self):

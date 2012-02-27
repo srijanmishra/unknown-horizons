@@ -19,6 +19,7 @@
 # 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 # ###################################################
 import math
+import logging
 
 from fife import fife
 import horizons.main
@@ -33,6 +34,8 @@ roundhalfplus = lambda x: int(round(math.floor(x + x) / 2.0 + 0.25))
 
 class CursorTool(fife.IMouseListener):
 	"""Basic tool for cursors."""
+	log = logging.getLogger("gui.mousetools")
+
 	def __init__(self, session):
 		super(CursorTool, self).__init__()
 		assert isinstance(session, horizons.session.Session)
@@ -103,3 +106,6 @@ class CursorTool(fife.IMouseListener):
 		else:
 			return fife.ScreenPoint(arg.getX(), arg.getY())
 
+	def end(self):
+		self.session = None
+		self.tooltip = None

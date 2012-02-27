@@ -104,16 +104,16 @@ class BoatbuilderTab(_BoatbuilderOverviewTab):
 				# people don't count properly, always starting at 1..
 				icon_name = "queue_elem_"+str(place_in_queue)
 				icon = TooltipIcon(name=icon_name, image=image, tooltip=tooltip)
-				queue_container.addChild( icon )
-				queue_container.capture(
+				icon.capture(
 				  Callback(RemoveFromQueue(self.producer, place_in_queue).execute, self.instance.session),
 				  event_name="mouseClicked"
 				)
+				queue_container.addChild( icon )
 
 			# Set built ship info
 			produced_unit_id = self.producer._get_production(production_lines[0]).get_produced_units().keys()[0]
 			produced_unit_id = self.producer._get_production(production_lines[0]).get_produced_units().keys()[0]
-			(name,) = self.instance.session.db("SELECT name FROM unit WHERE id = ?", produced_unit_id)[0]
+			(name,) = self.instance.session.db.cached_query("SELECT name FROM unit WHERE id = ?", produced_unit_id)[0]
 			container_active.findChild(name="headline_BB_builtship_label").text = _(name)
 			container_active.findChild(name="BB_cur_ship_icon").tooltip = "Storage: 4 slots, 120t \nHealth: 100"
 			container_active.findChild(name="BB_cur_ship_icon").image = "content/gui/images/objects/ships/116/%s.png" % (produced_unit_id)
@@ -132,7 +132,7 @@ class BoatbuilderTab(_BoatbuilderOverviewTab):
 					container_active.insertChild(container_active.button_inactive, \
 					                             len(container_active.children))
 				container_active.mapEvents({
-				  'toggle_active_inactive' : Callback(self.instance.set_active, active=True)
+				  'toggle_active_inactive' : Callback(self.producer.set_active, active=True)
 				})
 				# TODO: make this button do sth
 			else:
@@ -147,7 +147,7 @@ class BoatbuilderTab(_BoatbuilderOverviewTab):
 					                             len(container_active.children))
 
 				container_active.mapEvents({
-				  'toggle_active_active' : Callback(self.instance.set_active, active=False)
+				  'toggle_active_active' : Callback(self.producer.set_active, active=False)
 				})
 			upgrades_box = container_active.findChild(name="BB_upgrades_box")
 			for child in upgrades_box.children[:]:

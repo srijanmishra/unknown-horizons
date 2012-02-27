@@ -44,6 +44,7 @@ from horizons.world.component.namedcomponent import NamedComponent
 from horizons.world.component.storagecomponent import StorageComponent
 from horizons.world.component.tradepostcomponent import TradePostComponent
 from horizons.world.production.producer import Producer
+from horizons.util.messaging.message import SettlerUpdate
 
 
 class OverviewTab(TabInterface):
@@ -188,7 +189,7 @@ class ShipOverviewTab(OverviewTab):
 		island_without_player_settlement_found = False
 		tooltip = _("The ship needs to be close to an island to found a settlement.")
 		for island in self.instance.session.world.get_islands_in_radius(self.instance.position, self.instance.radius):
-			if not any(settlement.owner is self.instance.session.world.player for settlement in island.settlements):
+			if not any(settlement.owner.is_local_player for settlement in island.settlements):
 				island_without_player_settlement_found = True
 			else:
 				tooltip = _("You already have a settlement on this island.")
@@ -297,6 +298,10 @@ class FightingShipOverviewTab(ShipOverviewTab):
 			self.weapon_inventory.alter(weapon_id, -1)
 		self.widget.child_finder('weapon_inventory').update()
 		self.refresh()
+
+	def on_instance_removed(self):
+		self.weapon_inventory = None
+		super(FightingShipOverviewTab, self).on_instance_removed()
 
 class TowerOverviewTab(OverviewTab): # defensive tower
 	def __init__(self, instance):
@@ -492,6 +497,20 @@ class SettlerOverviewTab(OverviewTab):
 		action_gfx = action_set.items()[0][1]
 		image = action_gfx[45].keys()[0]
 		self.widget.findChild(name="building_image").image = image
+
+	def on_settler_level_change(self, message):
+		assert isinstance(message, SettlerUpdate)
+		_setup_tax_slider(self.widget.child_finder('tax_slider'), self.widget.child_finder('tax_val_label'),
+		                  self.instance.settlement, message.level)
+		self.widget.child_finder('tax_val_label').text = unicode(self.instance.settlement.tax_settings[self.instance.level])
+
+	def show(self):
+		super(SettlerOverviewTab, self).show()
+		self.instance.session.message_bus.subscribe_locally(SettlerUpdate, self.instance, self.on_settler_level_change)
+
+	def hide(self):
+		self.instance.session.message_bus.unsubscribe_locally(SettlerUpdate, self.instance, self.on_settler_level_change)
+		super(SettlerOverviewTab, self).hide()
 
 	def refresh(self):
 		self.widget.child_finder('happiness').progress = self.instance.happiness

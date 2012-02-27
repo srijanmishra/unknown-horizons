@@ -40,9 +40,11 @@ from horizons.util.gui import LazyWidgetsDict
 from horizons.constants import BUILDINGS, GUI
 from horizons.command.uioptions import RenameObject
 from horizons.command.misc import Chat
+from horizons.command.game import SpeedDownCommand, SpeedUpCommand
 from horizons.gui.tabs.tabinterface import TabInterface
 from horizons.world.component.namedcomponent import SettlementNameComponent, NamedComponent
 from horizons.world.component.selectablecomponent import SelectableComponent
+from horizons.util.messaging.message import SettlerUpdate, SettlerInhabitantsChanged, ResourceBarResize
 
 class IngameGui(LivingObject):
 	"""Class handling all the ingame gui events.
@@ -63,6 +65,7 @@ class IngameGui(LivingObject):
 	def __init__(self, session, gui):
 		super(IngameGui, self).__init__()
 		self.session = session
+		assert isinstance(self.session, horizons.session.Session)
 		self.main_gui = gui
 		self.main_widget = None
 		self.tabwidgets = {}
@@ -109,14 +112,20 @@ class IngameGui(LivingObject):
 		                       session=self.session,
 		                       world=self.session.world,
 		                       view=self.session.view)
+
+		def speed_up():
+			SpeedUpCommand().execute(self.session)
+
+		def speed_down():
+			SpeedDownCommand().execute(self.session)
+
 		minimap.mapEvents({
 			'zoomIn' : self.session.view.zoom_in,
 			'zoomOut' : self.session.view.zoom_out,
 			'rotateRight' : Callback.ChainedCallbacks(self.session.view.rotate_right, self.minimap.rotate_right),
 			'rotateLeft' : Callback.ChainedCallbacks(self.session.view.rotate_left, self.minimap.rotate_left),
-			'speedUp' : self.session.speed_up,
-			'speedDown' : self.session.speed_down,
-
+			'speedUp' : speed_up,
+			'speedDown' : speed_down,
 			'destroy_tool' : self.session.toggle_destroy_tool,
 			'build' : self.show_build_menu,
 			'diplomacyButton' : self.show_diplomacy_menu,
@@ -131,12 +140,23 @@ class IngameGui(LivingObject):
 		self.message_widget = MessageWidget(self.session)
 
 		self.resource_overview = ResourceOverviewBar(self.session)
+		self.session.message_bus.subscribe_globally( ResourceBarResize, self._on_resourcebar_resize )
 
 		# map buildings to build functions calls with their building id.
 		# This is necessary because BuildTabs have no session.
 		self.callbacks_build = dict()
 		for building_id in Entities.buildings.iterkeys():
 			self.callbacks_build[building_id] = Callback(self._build, building_id)
+
+		# Register for messages
+		self.session.message_bus.subscribe_globally(SettlerUpdate, self._on_settler_level_change)
+		self.session.message_bus.subscribe_globally(SettlerInhabitantsChanged, self._on_settler_inhabitant_change)
+
+	def _on_resourcebar_resize(self, message):
+		###
+		# TODO implement
+		###
+		pass
 
 	def end(self):
 		self.widgets['minimap'].mapEvents({
@@ -158,6 +178,7 @@ class IngameGui(LivingObject):
 		self.tabwidgets = None
 		self.minimap = None
 		self.hide_menu()
+		self.session.message_bus.unsubscribe_globally(SettlerUpdate, self._on_settler_level_change)
 		super(IngameGui, self).end()
 
 	def cityinfo_set(self, settlement):
@@ -200,9 +221,16 @@ class IngameGui(LivingObject):
 			self.update_settlement()
 			settlement.add_change_listener(self.update_settlement)
 
+	def _on_settler_inhabitant_change(self, message):
+		assert isinstance(message, SettlerInhabitantsChanged)
+		cityinfo = self.widgets['city_info']
+		foundlabel = cityinfo.child_finder('city_inhabitants')
+		foundlabel.text = unicode(' %s' % ((int(foundlabel.text) if foundlabel.text else 0) + message.change))
+		foundlabel.resizeToContent()
+
 	def update_settlement(self):
 		cityinfo = self.widgets['city_info']
-		if self.settlement.owner == self.session.world.player: # allow name changes
+		if self.settlement.owner.is_local_player: # allow name changes
 			cb = Callback(self.show_change_name_dialog, self.settlement)
 			tooltip = _("Click to change the name of your settlement")
 		else: # no name changes
@@ -270,13 +298,13 @@ class IngameGui(LivingObject):
 		self.session.set_cursor() # set default cursor for build menu
 		self.deselect_all()
 
-		if not any( (settlement.owner == self.session.world.player) for settlement in self.session.world.settlements):
+		if not any( settlement.owner.is_local_player for settlement in self.session.world.settlements):
 			# player has not built any settlements yet. Accessing the build menu at such a point
 			# indicates a mistake in the mental model of the user. Display a hint.
 			tab = TabWidget(self, tabs=[ TabInterface(widget="buildtab_no_settlement.xml") ])
 		else:
 			btabs = [BuildTab(index+1, self.callbacks_build, self.session) for index in \
-							 range(self.session.world.player.settler_level+1)]
+							 xrange(self.session.world.player.settler_level+1)]
 			tab = TabWidget(self, tabs=btabs, name="build_menu_tab_widget", \
 											active_tab=BuildTab.last_active_build_tab)
 		self.show_menu(tab)
@@ -322,10 +350,14 @@ class IngameGui(LivingObject):
 		@param menu: str with the guiname or pychan object.
 		"""
 		if self._old_menu is not None:
+			if hasattr(self._old_menu, "remove_remove_listener"):
+				self._old_menu.remove_remove_listener( Callback(self.show_menu, None) )
 			self._old_menu.hide()
 
 		self._old_menu = self._get_menu_object(menu)
 		if self._old_menu is not None:
+			if hasattr(self._old_menu, "add_remove_listener"):
+				self._old_menu.add_remove_listener( Callback(self.show_menu, None) )
 			self._old_menu.show()
 			self.minimap_to_front()
 
@@ -444,11 +476,11 @@ class IngameGui(LivingObject):
 		wdg.resizeToContent()
 		self.widgets['minimap'].show()
 
-	def _player_settler_level_change_listener(self):
+	def _on_settler_level_change(self, message):
 		"""Gets called when the player changes"""
-		menu = self.get_cur_menu()
-		if hasattr(menu, "name"):
-			if menu.name == "build_menu_tab_widget":
+		if message.sender.owner.is_local_player:
+			menu = self.get_cur_menu()
+			if hasattr(menu, "name") and menu.name == "build_menu_tab_widget":
 				# player changed and build menu is currently displayed
 				self.show_build_menu(update=True)
 

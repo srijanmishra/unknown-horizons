@@ -23,9 +23,11 @@ import tempfile
 
 from horizons.command.building import Build, Tear
 from horizons.world.component.storagecomponent import StorageComponent
+from horizons.world.component.collectingcompontent import CollectingComponent
 from horizons.world.production.producer import Producer, QueueProducer
 from horizons.constants import BUILDINGS, RES, PRODUCTIONLINES, GAME
 from horizons.util.worldobject import WorldObject
+from horizons.world.production.utilisation import FieldUtilisation
 
 from tests.game import settle, game_test, new_session, load_session
 from tests.game.test_buildings import test_brick_production_chain, test_tool_production_chain
@@ -35,7 +37,7 @@ from tests.game.test_farm import _build_farm
 @game_test
 def test_ticket_979(s, p):
 	settlement, island = settle(s)
-	storage_collectors = settlement.warehouse.get_local_collectors()
+	storage_collectors = settlement.warehouse.get_component(CollectingComponent).get_local_collectors()
 
 	farm = _build_farm(30, 30, BUILDINGS.POTATO_FIELD_CLASS, island, settlement, p)
 
@@ -75,7 +77,7 @@ def test_ticket_1016(s, p):
 	torn_down = False
 	while not torn_down:
 		s.run(seconds=1)
-		for col in farm._CollectingBuilding__collectors:
+		for col in farm.get_component(CollectingComponent)._CollectingComponent__collectors:
 			if col.job:
 				Tear(col.job.object)(p)
 				Tear(farm)(p)
@@ -207,6 +209,9 @@ def test_ticket_1427():
 	assert expected_production == production_line_loaded.production
 	assert expected_progress == production_loaded.progress
 
+	# if you don't let the session run for a bit then collectors won't be fully initialized and can't be killed => another test will fail in session.end()
+	session.run(seconds=1)
+	session.end()
 
 
 @game_test
@@ -234,4 +239,18 @@ def test_settler_level(s, p):
 	# should have leveled up
 	assert settler.level == level + 1
 
+@game_test
+def test_ticket_1523(s, p):
+	settlement, island = settle(s)
 
+	farm = _build_farm(30, 30, BUILDINGS.POTATO_FIELD_CLASS, island, settlement, p)
+
+	# Let it work for a bit
+	s.run(seconds=60)
+	assert farm.get_component(StorageComponent).inventory[RES.FOOD_ID]
+
+
+	assert isinstance(farm.get_component(Producer)._Producer__utilisation, FieldUtilisation)
+	# Should be 0.5
+	assert not farm.get_component(Producer).capacity_utilisation_below(0.4)
+	assert farm.get_component(Producer).capacity_utilisation > 0.4

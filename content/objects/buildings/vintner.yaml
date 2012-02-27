@@ -1,6 +1,6 @@
 id: 65
 name: _ Vintner
-baseclass: production.Refiner
+baseclass: production.ProductionBuilding
 radius: 8
 cost: 20
 cost_inactive: 5
