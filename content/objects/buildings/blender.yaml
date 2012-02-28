@@ -27,4 +27,5 @@ components:
       SlotsStorage:
         slot_sizes: {46: 4, 47: 6}
 actionsets:
-  as_blender0: {level: 0}
+  #as_blender0: {level: 0}
+  as_2x2: {level: 0}

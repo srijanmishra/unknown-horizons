@@ -27,4 +27,5 @@ components:
       SlotsStorage:
         slot_sizes: {52: 8, 7: 8}
 actionsets:
-  as_stonemason0: {level: 0}
+  #as_stonemason0: {level: 0}
+  as_2x2: {level: 0}

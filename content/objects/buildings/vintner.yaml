@@ -26,4 +26,5 @@ components:
       SlotsStorage:
         slot_sizes: {22: 6, 58: 8}
 actionsets:
-  as_vintner0: {level: 0}
+  #as_vintner0: {level: 0}
+  as_2x2: {level: 0}
