@@ -62,7 +62,7 @@ class VERSION:
 	#RELEASE_VERSION = u'2011.3'
 
 	## +=1 this if you changed the savegame "api"
-	SAVEGAMEREVISION= 52
+	SAVEGAMEREVISION= 53
 
 	@staticmethod
 	def string():
@@ -72,7 +72,6 @@ class VERSION:
 class UNITS:
 	# ./development/print_db_data.py unit
 	HUKER_SHIP_CLASS           = 1000001
-	PLAYER_SHIP_CLASS          = HUKER_SHIP_CLASS
 	BUILDING_COLLECTOR_CLASS   = 1000002
 	FISHER_BOAT_CLASS          = 1000004
 	PIRATE_SHIP_CLASS          = 1000005
@@ -80,6 +79,10 @@ class UNITS:
 	WILD_ANIMAL_CLASS          = 1000013
 	USABLE_FISHER_BOAT         = 1000016
 	FRIGATE_CLASS              = 1000020
+
+	# players will be spawned with an instance of this
+	PLAYER_SHIP_CLASS          = HUKER_SHIP_CLASS
+	#PLAYER_SHIP_CLASS          = FRIGATE_CLASS
 
 	# collectors
 	ANIMAL_COLLECTOR_CLASS      = 1000007
@@ -135,7 +138,7 @@ class BUILDINGS:
 	SALT_PONDS_CLASS = 35
 	TOBACCO_FIELD_CLASS = 36
 	TOBACCONIST_CLASS = 37
-	FIRE_BRIGADE_CLASS = 45
+	FIRE_STATION_CLASS = 45
 
 	TRANSPARENCY_VALUE = 180
 
@@ -162,7 +165,7 @@ class RES:
 	FOOD_ID = 5
 	TOOLS_ID = 6
 	BRICKS_ID = 7
-	WOOD_ID = 8
+	TREES_ID = 8
 	WOOL_ID = 10
 	FAITH_ID = 11
 	WILDANIMALFOOD_ID = 12
@@ -263,7 +266,7 @@ class PRODUCTIONLINES:
 	HUKER = 15
 	FISHING_BOAT = None # will get added later
 	FRIGATE = 58
-	WOOD = 2
+	TREES = 2
 
 ## GAME-RELATED, BALANCING VALUES
 class GAME:

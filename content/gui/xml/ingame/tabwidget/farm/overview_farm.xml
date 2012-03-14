@@ -6,18 +6,24 @@
 <TabBG amount="8"/>
 
 <Container position="0,70" size="250,450" >
-	<Label name="name" position="25,0" text="" />
-	<Icon image="content/gui/images/background/hr.png" position="20,20" />
-	<HBox min_size="125,20" max_size="225,20" position="25,26">
-		<TooltipIcon name="running_costs_label" tooltip="Running costs"
+	<HBox position="22,7"  min_size="170,20"  size="230,20" >
+	<Spacer min_size="0"  max_size="50" />
+		<Label name="headline"  text="Building overview" />
+	</HBox>
+
+	<Icon image="content/gui/images/background/hr.png" position="20,30" />
+
+	<Label name="name" position="25,40" text="" />
+	<HBox min_size="125,20" max_size="225,20" position="25,63">
+		<Icon name="running_costs_label" helptext="Running costs"
 			image="content/gui/icons/resources/running_costs.png" />
-		<TooltipLabel name="running_costs" text=""
-			tooltip="Running costs" />
+		<Label name="running_costs" text=""
+			helptext="Running costs" />
 		<Spacer max_size="50" />
-		<TooltipIcon name="capacity_utilisation_label"  tooltip="Capacity utilization"
+		<Icon name="capacity_utilisation_label"  helptext="Capacity utilization"
 			image="content/gui/icons/resources/cap_util.png" />
-		<TooltipLabel name="capacity_utilisation" text=""
-			tooltip="Capacity utilization" />
+		<Label name="capacity_utilisation" text=""
+			helptext="Capacity utilization" />
 	</HBox>
 
 	<VBox name="production_lines" position="20,46" />

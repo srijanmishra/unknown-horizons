@@ -22,8 +22,11 @@
 
 from fife import fife
 from fife.extensions import pychan
+import json
 import weakref
 import functools
+
+import horizons.main
 
 from horizons.constants import RES
 from horizons.world.component.storagecomponent import StorageComponent
@@ -31,6 +34,9 @@ from horizons.util.gui import load_uh_widget, get_res_icon, create_resource_sele
 from horizons.util import PychanChildFinder, Callback
 from horizons.util.python.decorators import cachedmethod
 from horizons.util.messaging.message import ResourceBarResize
+from horizons.extscheduler import ExtScheduler
+from horizons.world.component.ambientsoundcomponent import AmbientSoundComponent
+from horizons.util.lastactiveplayersettlementmanager import LastActivePlayerSettlementManager
 
 
 class ResourceOverviewBar(object):
@@ -90,6 +96,26 @@ class ResourceOverviewBar(object):
 		self._last_build_costs = None
 		self._do_show_dummy = False
 
+		self._update_default_configuration()
+
+	def end(self):
+		self.set_inventory_instance( None, force_update=True )
+		self.current_instance = weakref.ref(self)
+		ExtScheduler().rem_all_classinst_calls(self)
+		self.resource_configurations.clear()
+		self.gold_gui = None
+		self.gui = None
+		self._custom_default_resources = None
+
+	def _update_default_configuration(self):
+		# user defined variante of DEFAULT_RESOURCES (will be preferred)
+		self._custom_default_resources = None
+		setting = horizons.main.fife.get_uh_setting("ResourceOverviewBarConfiguration")
+		if setting: # parse it if there is something
+			config = json.loads(setting)
+			if config: # actually use it if it was parseable
+				self._custom_default_resources = config
+
 	def save(self, db):
 		for obj, config in self.resource_configurations.iteritems():
 			for position, res in enumerate(config):
@@ -115,12 +141,18 @@ class ResourceOverviewBar(object):
 
 		self.set_inventory_instance(None)
 
+	def redraw(self):
+		self.set_inventory_instance(self.current_instance(), force_update=True)
+
 	def set_inventory_instance(self, instance, keep_construction_mode=False, force_update=False):
 		"""Display different inventory. May change resources that are displayed"""
 		if self.current_instance() is instance and not self.construction_mode and not force_update:
 			return # caller is drunk yet again
 		if self.construction_mode and not keep_construction_mode:
+			# stop construction mode, immediately update view, which will be a normal view
 			self.close_construction_mode(update_slots=False)
+
+		# reconstruct general gui
 
 		# remove old gui
 		for i in self.gui:
@@ -151,21 +183,22 @@ class ResourceOverviewBar(object):
 			background_icon.add_entered_callback( Callback(self._show_resource_selection_dialog, i) )
 
 			if res != -1:
-				tooltip = self.session.db.get_res_name(res)
+				helptext = self.session.db.get_res_name(res)
 				icon = entry.findChild(name="res_icon")
 				icon.num = i
 				icon.image = get_res_icon(res)[2] # the 24 one
 				icon.capture(self._on_res_slot_click, event_name = 'mouseClicked')
 			else:
-				tooltip = _("Click to add a new slot")
+				helptext = _("Click to add a new slot")
 				entry.show() # this will not be filled as the other res
-			background_icon.tooltip = tooltip
+			background_icon.helptext = helptext
 
 			self.gui.append(entry)
 			# show it just when values are entered, this appeases pychan
 
 		# fill values
 		inv = self._get_current_inventory()
+		# update on all changes as well as now
 		inv.add_change_listener(self._update_resources, call_listener_now=True)
 
 	def set_construction_mode(self, resource_source_instance, build_costs):
@@ -173,6 +206,10 @@ class ResourceOverviewBar(object):
 		@param resource_source_instance: object with StorageComponent
 		@param build_costs: dict, { res : amount }
 		"""
+		if resource_source_instance is None:
+			# Build moved out of settlement. This is usually not sane and an interaction error.
+			# Use this heuristically computed settlement to fix preconditions.
+			resource_source_instance = LastActivePlayerSettlementManager().get()
 		if self.construction_mode and \
 		   resource_source_instance == self.current_instance() and \
 		   build_costs == self._last_build_costs:
@@ -216,6 +253,7 @@ class ResourceOverviewBar(object):
 				self.gold_gui.addChild(cost_label)
 				self.gold_gui.resizeToContent()
 
+
 	def close_construction_mode(self, update_slots=True):
 		"""Return to normal configuration"""
 		self.construction_mode = False
@@ -224,7 +262,7 @@ class ResourceOverviewBar(object):
 		self._reset_gold_gui()
 		self._update_gold()
 		self.gold_gui.show()
-		self._update_gold()
+		self._update_gold(force=True)
 
 	def _reset_gold_gui(self):
 		if self.gold_gui is not None:
@@ -234,8 +272,20 @@ class ResourceOverviewBar(object):
 		# set appropriate icon
 		self.gold_gui.findChild(name="res_icon").image = get_res_icon(RES.GOLD_ID)[4] # the 32 one
 
-	def _update_gold(self):
+	def _update_gold(self, force=False):
 		"""Changelistener to upate player gold"""
+		# can be called pretty often (e.g. if there's an settlement.inventory.alter() in a loop)
+		# only update every 0.2 sec at most
+		scheduled_attr = "_gold_upate_scheduled"
+		if not hasattr(self, scheduled_attr):
+			setattr(self, scheduled_attr, True)
+			ExtScheduler().add_new_object(Callback(self._update_gold, True), self, run_in=0.02)
+			return
+		elif not force:
+			return # these calls we want to suppress, wait for scheduled call
+
+		delattr(self, scheduled_attr)
+
 		# set gold amount
 		gold = self.session.world.player.get_component(StorageComponent).inventory[RES.GOLD_ID]
 		gold_available_lbl = self.gold_gui.child_finder("gold_available")
@@ -247,7 +297,7 @@ class ResourceOverviewBar(object):
 
 	def _update_resources(self):
 		"""Same as _update_gold but for all other slots"""
-		if not self.current_instance(): # instance died
+		if self.current_instance() in (None, self): # instance died
 			self.set_inventory_instance(None)
 			return
 		inv = self._get_current_inventory()
@@ -271,8 +321,10 @@ class ResourceOverviewBar(object):
 			res_list += [ res for res in self._last_build_costs if \
 			              res not in res_list and res != RES.GOLD_ID ]
 			return res_list
-		return self.resource_configurations.get(self.current_instance(),
-		                                        self.__class__.DEFAULT_RESOURCES)
+		# prefer user defaults over general defaults
+		default = self._custom_default_resources if self._custom_default_resources else self.__class__.DEFAULT_RESOURCES
+		# prefer specific setting over any defaults
+		return self.resource_configurations.get(self.current_instance(), default)
 
 	def _get_current_inventory(self):
 		if not (self.current_instance() in (None, self)): # alive and set
@@ -314,8 +366,55 @@ class ResourceOverviewBar(object):
 		background_icon = cur_gui.findChild(name="background_icon")
 		dlg.position = (cur_gui.position[0] + background_icon.position[0],
 		                cur_gui.position[1] + background_icon.position[1] + background_icon.size[1] )
+		dlg.findChild(name="make_default_btn").capture(self._make_configuration_default)
+		reset_default_btn = dlg.findChild(name="reset_default_btn")
+		# this is a quadruple-use button.
+		# If there is no user set default, restore to factory default
+		# If the current config is different from user default, set to default
+		# If this is the current user set config, remove user set config and fall back to factory default
+		# If there is no user set config and the current config is the system default,
+		# the button should be disabled, but the first case below is shown because
+		# we can't disable it
+		if self._custom_default_resources is None:
+			reset_default_btn.text = _("Reset to default")
+			reset_default_btn.helptext = _("Reset this configuration to the factory default.")
+			reset_default_btn.capture(Callback(self._drop_settlement_resource_configuration))
+
+		elif self._custom_default_resources != self._get_current_resources():
+			reset_default_btn.text = _("Reset to default")
+			reset_default_btn.helptext = _("Reset this settlement's displayed resources to the default configuration you have saved.")
+			reset_default_btn.capture(Callback(self._drop_settlement_resource_configuration))
+
+		else:
+			reset_default_btn.text = _("Reset to factory")
+			reset_default_btn.helptext = _("Reset the default configuration (which you see here) to the factory default for all settlements.")
+			cb = Callback.ChainedCallbacks(
+			  self._drop_settlement_resource_configuration, # remove specific config
+			  Callback(self._make_configuration_default, reset=True) # remove global config
+			)
+			reset_default_btn.capture( cb )
+
 		dlg.show()
 		self._res_selection_dialog = dlg
+
+	def _make_configuration_default(self, reset=False):
+		"""Saves current resources as default via game settings"""
+		if reset:
+			config = [] # meaning invalid
+		else:
+			config = json.dumps(self._get_current_resources())
+		horizons.main.fife.set_uh_setting("ResourceOverviewBarConfiguration", config)
+		horizons.main.fife.save_settings()
+		self._update_default_configuration()
+		AmbientSoundComponent.play_special("success")
+		if reset: # in the other case, it's already set
+			self.redraw()
+
+	def _drop_settlement_resource_configuration(self):
+		"""Forget resource configuration for a settlement"""
+		if self.current_instance() in self.resource_configurations:
+			del self.resource_configurations[self.current_instance()]
+		self.redraw()
 
 	def _set_resource_slot(self, slot_num, res_id):
 		"""Show res_id in slot slot_num
@@ -340,7 +439,7 @@ class ResourceOverviewBar(object):
 
 		self.resource_configurations[self.current_instance()] = res_copy
 
-		self.set_inventory_instance(self.current_instance(), force_update=True)
+		self.redraw()
 
 		if isinstance(self.session.cursor, ResBarMouseTool):
 			self.session.cursor.reset()
@@ -359,11 +458,11 @@ class ResourceOverviewBar(object):
 		if self._do_show_dummy:
 			return # already visible
 		self._do_show_dummy = True
-		self.set_inventory_instance(self.current_instance(), force_update=True)
+		self.redraw()
 
 	def _hide_dummy_slot(self):
 		self._do_show_dummy = False
-		self.set_inventory_instance(self.current_instance(), force_update=True)
+		self.redraw()
 
 	def _on_res_slot_click(self, widget, event):
 		"""Called when you click on a resource slot in the bar (not the selection dialog)"""

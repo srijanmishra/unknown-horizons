@@ -21,6 +21,7 @@
 
 import re
 import horizons.main
+from fife import fife
 
 from horizons.entities import Entities
 from horizons.util import livingProperty, LivingObject, PychanChildFinder
@@ -95,6 +96,7 @@ class IngameGui(LivingObject):
 		cityinfo.position_technique = "%s%+d:%s%+d" % (x, x_offset, y, y_offset) # usually "center-10:top+4"
 
 		self.logbook = LogBook(self.session)
+		self.message_widget = MessageWidget(self.session)
 		self.players_overview = PlayersOverview(self.session)
 		self.players_settlements = PlayersSettlements(self.session)
 		self.players_ships = PlayersShips(self.session)
@@ -110,7 +112,6 @@ class IngameGui(LivingObject):
 		                       targetrenderer=horizons.main.fife.targetrenderer,
 		                       imagemanager=horizons.main.fife.imagemanager,
 		                       session=self.session,
-		                       world=self.session.world,
 		                       view=self.session.view)
 
 		def speed_up():
@@ -136,8 +137,6 @@ class IngameGui(LivingObject):
 		#minimap.position_technique = "right+15:top+153"
 
 		self.widgets['tooltip'].hide()
-
-		self.message_widget = MessageWidget(self.session)
 
 		self.resource_overview = ResourceOverviewBar(self.session)
 		self.session.message_bus.subscribe_globally( ResourceBarResize, self._on_resourcebar_resize )
@@ -177,6 +176,8 @@ class IngameGui(LivingObject):
 		self.message_widget = None
 		self.tabwidgets = None
 		self.minimap = None
+		self.resource_overview.end()
+		self.resource_overview = None
 		self.hide_menu()
 		self.session.message_bus.unsubscribe_globally(SettlerUpdate, self._on_settler_level_change)
 		super(IngameGui, self).end()
@@ -232,18 +233,18 @@ class IngameGui(LivingObject):
 		cityinfo = self.widgets['city_info']
 		if self.settlement.owner.is_local_player: # allow name changes
 			cb = Callback(self.show_change_name_dialog, self.settlement)
-			tooltip = _("Click to change the name of your settlement")
+			helptext = _("Click to change the name of your settlement")
 		else: # no name changes
 			cb = lambda : 42
-			tooltip = u""
+			helptext = u""
 		cityinfo.mapEvents({
 			'city_name': cb
 		})
-		cityinfo.findChild(name="city_name").tooltip = tooltip
+		cityinfo.findChild(name="city_name").helptext = helptext
 
 		foundlabel = cityinfo.child_finder('owner_emblem')
 		foundlabel.image = 'content/gui/images/tabwidget/emblems/emblem_%s.png' % (self.settlement.owner.color.name)
-		foundlabel.tooltip = unicode(self.settlement.owner.name)
+		foundlabel.helptext = unicode(self.settlement.owner.name)
 
 		foundlabel = cityinfo.child_finder('city_name')
 		foundlabel.text = unicode(self.settlement.get_component(SettlementNameComponent).name)
@@ -400,6 +401,13 @@ class IngameGui(LivingObject):
 		newname = changename.findChild(name='new_name')
 		changename.mapEvents(events)
 		newname.capture(Callback(self.change_name, instance))
+
+		def forward_escape(event):
+			# the textfield will eat everything, even control events
+			if event.getKey().getValue() == fife.Key.ESCAPE:
+				self.main_gui.on_escape()
+		newname.capture( forward_escape, "keyPressed" )
+
 		changename.show()
 		newname.requestFocus()
 
@@ -493,6 +501,12 @@ class IngameGui(LivingObject):
 		self.main_gui.on_escape = self._hide_chat_dialog
 
 		self.widgets['chat'].mapEvents(events)
+		def forward_escape(event):
+			# the textfield will eat everything, even control events
+			if event.getKey().getValue() == fife.Key.ESCAPE:
+				self.main_gui.on_escape()
+
+		self.widgets['chat'].findChild(name='msg').capture( forward_escape, "keyPressed" )
 		self.widgets['chat'].findChild(name='msg').capture( self._do_chat )
 		self.widgets['chat'].show()
 		self.widgets['chat'].findChild(name="msg").requestFocus()

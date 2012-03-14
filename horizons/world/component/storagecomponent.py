@@ -76,11 +76,12 @@ class StorageComponent(Component):
 			self.inventory.load(db, worldid)
 
 	@classmethod
-	def get_instance(cls, arguments={}):
+	def get_instance(cls, arguments=None):
+		arguments = arguments or {}
 		inventory = None
 		if 'inventory' in arguments:
 			assert len(arguments['inventory']) == 1, "You may not have more than one inventory!"
-			for key, value in arguments['inventory'].iteritems():
-				storage = cls.storage_mapping[key]
-				inventory = storage(**value)
+			key, value = arguments['inventory'].items()[0]
+			storage = cls.storage_mapping[key]
+			inventory = storage(**value)
 		return cls(inventory=inventory)

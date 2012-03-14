@@ -26,7 +26,7 @@ from fife import fife
 from horizons.util.gui import load_uh_widget
 from horizons.util import Callback, Point
 from fife.extensions.pychan import widgets
-from horizons.gui.widgets.tooltip import TooltipButton
+from fife.extensions.pychan.widgets import ImageButton
 from horizons.world.component.storagecomponent import StorageComponent
 from horizons.gui.widgets.minimap import Minimap
 from horizons.world.component.namedcomponent import NamedComponent
@@ -85,11 +85,11 @@ class RouteConfig(object):
 
 	def start_button_set_active(self):
 		self._gui.findChild(name='start_route').set_active()
-		self._gui.findChild(name='start_route').tooltip = _('Start route')
+		self._gui.findChild(name='start_route').helptext = _('Start route')
 
 	def start_button_set_inactive(self):
 		self._gui.findChild(name='start_route').set_inactive()
-		self._gui.findChild(name='start_route').tooltip = _('Stop route')
+		self._gui.findChild(name='start_route').helptext = _('Stop route')
 
 	def start_route(self):
 		if self.instance.route.enable():
@@ -155,6 +155,7 @@ class RouteConfig(object):
 		position = self.widgets.index(entry)
 		if position == len(self.widgets) and direction is 'down' or \
 		   position == 0 and direction is 'up':
+			AmbientSoundComponent.play_special('error')
 			return
 
 		if direction is 'up':
@@ -177,19 +178,20 @@ class RouteConfig(object):
 			self.instance.route.enable()
 
 		self._gui.adaptLayout()
+		self._resource_selection_area_layout_hack_fix()
 
 	def show_load_icon(self, slot):
 		button = slot.findChild(name="buysell")
 		button.up_image = self.buy_button_path
 		button.hover_image = self.buy_button_path
-		button.tooltip = _("Loading into ship")
+		button.helptext = _("Loading into ship")
 		slot.action = "load"
 
 	def show_unload_icon(self, slot):
 		button = slot.findChild(name="buysell")
 		button.up_image = self.sell_button_path
 		button.hover_image = self.sell_button_path
-		button.tooltip = _("Unloading from ship")
+		button.helptext = _("Unloading from ship")
 		slot.action = "unload"
 
 	def toggle_load_unload(self, slot, entry):
@@ -275,7 +277,7 @@ class RouteConfig(object):
 		lbl = widgets.Label(name='select_res_label', text=_('Select a resource:'))
 		vbox.addChild( lbl )
 
-		scrollarea = widgets.ScrollArea()
+		scrollarea = widgets.ScrollArea(name="resources_scrollarea")
 		res_box = widgets.VBox()
 		scrollarea.addChild(res_box)
 		vbox.addChild(scrollarea)
@@ -298,7 +300,7 @@ class RouteConfig(object):
 				continue
 			cb = Callback(self.add_resource, slot, res_id, entry)
 			if res_id == 0 or inventory is None: # no fillbar e.g. on dead settlement (shouldn't happen) or dummy slot
-				button = TooltipButton(size=(46,46))
+				button = ImageButton(size=(46,46))
 				icon = self.icon_for_resource[res_id]
 				button.up_image, button.down_image, button.hover_image = icon, icon, icon
 				button.capture(cb)
@@ -322,11 +324,17 @@ class RouteConfig(object):
 		res_box.addChild(current_hbox)
 
 		self._gui.adaptLayout()
-		scrollarea.max_width = 316
-		scrollarea.width = 316
-		vbox.max_width = 316
-		vbox.width = 316
+		self._resource_selection_area_layout_hack_fix()
 
+	def _resource_selection_area_layout_hack_fix(self):
+		# no one knows why this is necessary, but sometimes we need to set the values anew
+		vbox = self._gui.findChild(name="resources")
+		scrollarea = vbox.findChild(name="resources_scrollarea")
+		if scrollarea:
+			scrollarea.max_width = 316
+			scrollarea.width = 316
+			vbox.max_width = 316
+			vbox.width = 316
 
 	def hide_resource_menu(self):
 		self.resource_menu_shown = False

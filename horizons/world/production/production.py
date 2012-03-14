@@ -65,12 +65,13 @@ class Production(ChangeListener):
 		self.__start_finished = start_finished
 		self.__init(inventory, owner_inventory, prod_id, prod_data, PRODUCTION.STATES.none, Scheduler().cur_tick)
 
-		if not load:
+		if not load and not start_finished:
 			self._add_listeners()
 
 	def start(self):
 		if self.__start_finished:
 			self._give_produced_res()
+			self._add_listeners()
 		if self.__auto_start:
 			self._check_inventory()
 

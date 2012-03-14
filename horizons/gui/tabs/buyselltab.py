@@ -30,7 +30,6 @@ from horizons.command.uioptions import AddToBuyList, AddToSellList, RemoveFromBu
 from horizons.gui.widgets.tradehistoryitem import TradeHistoryItem
 from horizons.util import Callback, WorldObject
 from horizons.util.gui import load_uh_widget, get_res_icon, create_resource_selection_dialog
-from horizons.world.component.storagecomponent import StorageComponent
 from horizons.world.component.tradepostcomponent import TradePostComponent
 
 class BuySellTab(TabInterface):
@@ -53,6 +52,8 @@ class BuySellTab(TabInterface):
 		Sets up the GUI and game logic for the buyselltab.
 		"""
 		super(BuySellTab, self).__init__(widget = 'buysellmenu.xml')
+		self.inited = False # prevents execution of commands during init
+		# this makes sharing code easier
 		self.session = instance.session
 		self.tradepost = instance.settlement.get_component(TradePostComponent)
 		assert isinstance(self.tradepost, TradePostComponent)
@@ -69,18 +70,22 @@ class BuySellTab(TabInterface):
 		self.resources = None # Placeholder for resource gui
 		self.add_slots(slots)
 		slot_count = 0
+		# use dynamic change code to init the slots
 		buy_list = self.tradepost.buy_list
 		for res in buy_list:
-			if slot_count < self.slots:
-				self.add_resource(res, slot_count, buy_list[res], \
-				                  dont_use_commands=True)
+			if slot_count < slots:
+				self.slots[slot_count].action = 'buy'
+				self.add_resource(res, slot_count, buy_list[res])
+				self._show_buy( self.slots[slot_count] )
+
 				slot_count += 1
 		sell_list = self.tradepost.sell_list
 		for res in sell_list:
-			if slot_count < self.slots:
-				self.add_resource(res, slot_count, sell_list[res], \
-				                  dont_use_commands=True)
-				self.toggle_buysell(slot_count, dont_use_commands=True)
+			if slot_count < slots:
+				self.slots[slot_count].action = 'sell'
+				self.add_resource(res, slot_count, sell_list[res])
+				self._show_sell( self.slots[slot_count] )
+
 				slot_count += 1
 
 		# init the trade history
@@ -88,7 +93,8 @@ class BuySellTab(TabInterface):
 		self.trade_history_widget_cache = {} # {(tick, player_id, resource_id, amount, gold): widget, ...}
 
 		self.hide()
-		self.tooltip = _("Trade")
+		self.helptext = _("Trade")
+		self.inited = True
 
 	def hide(self):
 		"""Hide the tab and all widgets we may have added at runtime."""
@@ -162,7 +168,7 @@ class BuySellTab(TabInterface):
 		self.widget.adaptLayout()
 
 
-	def add_resource(self, res_id, slot_id, value=None, dont_use_commands=False):
+	def add_resource(self, res_id, slot_id, value=None):
 		"""
 		Adds a resource to the specified slot
 		@param res_id: int - resource id
@@ -190,27 +196,21 @@ class BuySellTab(TabInterface):
 
 		if slot.action is "sell":
 			if slot.res is not None: # slot has been in use before, delete old value
-				if dont_use_commands: # dont_use_commands is true if called by __init__
-					self.tradepost.remove_from_sell_list(slot.res)
-				else:
-					RemoveFromSellList(self.tradepost, slot.res).execute(self.session)
+				self.remove_sell_from_settlement(slot.res)
 			if res_id != 0:
-				self.add_sell_to_settlement(res_id, value, slot.id, dont_use_commands)
+				self.add_sell_to_settlement(res_id, value, slot.id)
 		else:
 			if slot.action is "buy" and slot.res is not None:
-				if dont_use_commands: # dont_use_commands is true if called by __init__
-					self.tradepost.remove_from_buy_list(slot.res)
-				else:
-					RemoveFromBuyList(self.tradepost, slot.res).execute(self.session)
+				self.remove_buy_from_settlement(slot.res)
 			if res_id != 0:
-				self.add_buy_to_settlement(res_id, value, slot.id, dont_use_commands)
+				self.add_buy_to_settlement(res_id, value, slot.id)
 
 		button = slot.findChild(name="button")
 		fillbar = slot.findChild(name="fillbar")
 		# reset slot value for new res
 		if res_id == 0:
 			button.up_image, button.down_image, button.hover_image = [ self.dummy_icon_path ] * 3
-			button.tooltip = u""
+			button.helptext = u""
 			slot.findChild(name="amount").text = u""
 			slot.findChild(name="slider").value = 0.0
 			slot.res = None
@@ -226,7 +226,7 @@ class BuySellTab(TabInterface):
 			button.up_image = icons[0]
 			button.down_image = icons[0]
 			button.hover_image = icons[1] # disabled icon
-			button.tooltip = self.session.db.get_res_name(res_id)
+			button.helptext = self.session.db.get_res_name(res_id)
 			slot.res = res_id
 			# use some python magic to assign a res attribute to the slot to
 			# save which res_id it stores
@@ -242,42 +242,31 @@ class BuySellTab(TabInterface):
 			self.toggle_buysell(slot_id, keep_hint=keep_hint)
 		slot.adaptLayout()
 
-	def toggle_buysell(self, slot_id, dont_use_commands=False, keep_hint=False):
+	def toggle_buysell(self, slot_id, keep_hint=False):
 		"""
 		Switches modes of individual resource slots between 'buy' and 'sell'.
 		"""
 		slot = self.slots[slot_id]
-		button = slot.findChild(name="buysell")
 		limit = int(slot.findChild(name="slider").value)
 		if slot.action is "buy":
 			# setting to sell
-			button.up_image = self.sell_button_path
-			button.hover_image = self.sell_hover_button_path
+			self._show_sell(slot)
 			slot.action = "sell"
 			if slot.res is not None:
-				self.log.debug("BuySellTab: Removing res %s from buy list", slot.res)
-				if dont_use_commands: # dont_use_commands is true if called by __init__
-					self.tradepost.remove_from_buy_list(slot.res)
-				else:
-					RemoveFromBuyList(self.tradepost, slot.res).execute(self.session)
-				self.add_sell_to_settlement(slot.res, limit, slot.id, dont_use_commands)
+				self.remove_buy_from_settlement(slot.res)
+				self.add_sell_to_settlement(slot.res, limit, slot.id)
 		elif slot.action is "sell":
 			# setting to buy
-			button.up_image = self.buy_button_path
-			button.hover_image = self.buy_hover_button_path
-			slot.action = "buy"
+			self._show_buy(slot)
 			if slot.res is not None:
-				self.log.debug("BuySellTab: Removing res %s from sell list", slot.res)
-				if dont_use_commands: # dont_use_commands is true if called by __init__
-					self.tradepost.remove_from_sell_list(slot.res)
-				else:
-					RemoveFromSellList(self.tradepost, slot.res).execute(self.session)
-				self.add_buy_to_settlement(slot.res, limit, slot.id, dont_use_commands)
+				self.remove_sell_from_settlement(slot.res)
+				self.add_buy_to_settlement(slot.res, limit, slot.id)
 
 		if not keep_hint:
 			self._update_hint(slot_id)
 
-	def add_buy_to_settlement(self, res_id, limit, slot, dont_use_commands=False):
+
+	def add_buy_to_settlement(self, res_id, limit, slot):
 		"""
 		Adds a buy action to this settlement's buy_list.
 		Actions have the form (res_id , limit) where limit is the amount until
@@ -286,12 +275,10 @@ class BuySellTab(TabInterface):
 		assert res_id is not None, "Resource to buy is None"
 		self.log.debug("BuySellTab: buying of res %s up to %s", res_id, limit)
 		self.slots[slot].action = "buy"
-		if dont_use_commands: # dont_use_commands is true if called by __init__
-			self.tradepost.add_to_buy_list(res_id, limit)
-		else:
+		if self.inited:
 			AddToBuyList(self.tradepost, res_id, limit).execute(self.session)
 
-	def add_sell_to_settlement(self, res_id, limit, slot, dont_use_commands=False):
+	def add_sell_to_settlement(self, res_id, limit, slot):
 		"""
 		Adds a sell action to this settlement's sell_list.
 		Actions have the form (res_id , limit) where limit is the amount until
@@ -300,10 +287,20 @@ class BuySellTab(TabInterface):
 		assert res_id is not None, "Resource to sell is None"
 		self.log.debug("BuySellTab: selling of res %s up to %s", res_id, limit)
 		self.slots[slot].action = "sell"
-		if dont_use_commands: # dont_use_commands is true if called by __init__
-			self.tradepost.add_to_sell_list(res_id, limit)
-		else:
+		if self.inited:
 			AddToSellList(self.tradepost, res_id, limit).execute(self.session)
+
+	def remove_buy_from_settlement(self, res_id):
+		"""Apply removal of buy order. Less powerful than add_*"""
+		self.log.debug("BuySellTab: Removing res %s from buy list", res_id)
+		if self.inited:
+			RemoveFromBuyList(self.tradepost, res_id).execute(self.session)
+
+	def remove_sell_from_settlement(self, res_id):
+		"""Apply removal of sell order. Less powerful than add_*"""
+		self.log.debug("BuySellTab: Removing res %s from sell list", res_id)
+		if self.inited:
+			RemoveFromSellList(self.tradepost, res_id).execute(self.session)
 
 	def slider_adjust(self, res_id, slot_id):
 		"""
@@ -326,7 +323,7 @@ class BuySellTab(TabInterface):
 			self.show_resource_menu(widget.parent.id)
 		elif event.getButton() == fife.MouseEvent.RIGHT:
 			# remove the buy/sell offer
-			self.add_resource(0, widget.parent.id, None, False)
+			self.add_resource(0, widget.parent.id)
 
 	def show_resource_menu(self, slot_id):
 		"""
@@ -375,3 +372,14 @@ class BuySellTab(TabInterface):
 		lbl.text = text
 		lbl.adaptLayout()
 
+	def _show_buy(self, slot):
+		"""Make slot show buy button. Purely visual change"""
+		button = slot.findChild(name="buysell")
+		button.up_image = self.buy_button_path
+		button.hover_image = self.buy_hover_button_path
+
+	def _show_sell(self, slot):
+		"""Make slot show sell button. Purely visual change"""
+		button = slot.findChild(name="buysell")
+		button.up_image = self.sell_button_path
+		button.hover_image = self.sell_hover_button_path

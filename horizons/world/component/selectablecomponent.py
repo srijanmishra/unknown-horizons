@@ -144,7 +144,7 @@ class SelectableBuildingComponent(SelectableComponent):
 		"""Runs necessary steps to select the building."""
 		super(SelectableBuildingComponent, self).select(reset_cam)
 		self.set_selection_outline()
-		if not self.instance.owner.is_local_player:
+		if self.instance.owner is None or not self.instance.owner.is_local_player:
 			return # don't show enemy ranges
 		renderer = self.session.view.renderer['InstanceRenderer']
 		self._do_select(renderer, self.instance.position, self.session.world,
@@ -185,7 +185,8 @@ class SelectableBuildingComponent(SelectableComponent):
 		import tempfile
 		outfilename = tempfile.mkstemp(text = True)[1]
 		print 'profile to ', outfilename
-		profile.runctx( "cls._do_select(renderer, position, session.world, settlement)", globals(), locals(), outfilename)
+		c = "cls._do_select(renderer, position, session.world, settlement)"
+		profile.runctx(c, globals(), locals(), outfilename)
 		"""
 		cls._do_select(renderer, position, session.world, settlement,
 		               radius, range_applies_only_on_island)
@@ -208,6 +209,27 @@ class SelectableBuildingComponent(SelectableComponent):
 		return selected_tiles
 
 	@classmethod
+	def select_many(cls, buildings, renderer):
+		"""Same as calling select() on many instances, but way faster.
+		Limited functionality, only use on real buildings of a settlement."""
+		if not buildings:
+			return [] # that is not many
+		settlement = buildings[0].settlement
+
+		coords = set( coord for \
+		              building in buildings for \
+		              coord in building.position.get_radius_coordinates(building.radius, include_self=True) )
+
+		selected_tiles = []
+		for coord in coords:
+			tile = settlement.ground_map.get(coord)
+			if tile:
+				if ( 'constructible' in tile.classes or 'coastline' in tile.classes ):
+					cls._add_selected_tile(tile, renderer)
+					selected_tiles.append(tile)
+		return selected_tiles
+
+	@classmethod
 	def _do_select(cls, renderer, position, world, settlement,
 	               radius, range_applies_only_on_island):
 		if range_applies_only_on_island:
@@ -222,11 +244,8 @@ class SelectableBuildingComponent(SelectableComponent):
 				ground_holder = settlement
 
 			for tile in ground_holder.get_tiles_in_radius(position, radius, include_self=False):
-				try:
-					if ( 'constructible' in tile.classes or 'coastline' in tile.classes ):
-						cls._add_selected_tile(tile, renderer)
-				except AttributeError:
-					pass # no tile or no object on tile
+				if ( 'constructible' in tile.classes or 'coastline' in tile.classes ):
+					cls._add_selected_tile(tile, renderer)
 		else:
 			# we have to color water too
 			# since water tiles are huge, create fake tiles and color them
@@ -247,10 +266,7 @@ class SelectableBuildingComponent(SelectableComponent):
 			for tup in position.get_radius_coordinates(radius):
 				tile = island.get_tile_tuple(tup)
 				if tile is not None:
-					try:
-						cls._add_selected_tile(tile, renderer)
-					except AttributeError:
-						pass # no tile or no object on tile
+					cls._add_selected_tile(tile, renderer)
 				else: # need extra tile
 					inst = layer.createInstance(cls._fake_tile_obj,
 					                            fife.ModelCoordinate(tup[0], tup[1], 0), "")
@@ -260,11 +276,14 @@ class SelectableBuildingComponent(SelectableComponent):
 					renderer.addColored(inst, *cls.selection_color)
 
 	@classmethod
-	def _add_selected_tile(cls, tile, renderer):
-		cls._selected_tiles.l.append(tile)
+	def _add_selected_tile(cls, tile, renderer, remember=True):
+		if remember:
+			cls._selected_tiles.l.append(tile)
 		renderer.addColored(tile._instance, *cls.selection_color)
-		# Add color to objects on tht tiles
-		renderer.addColored(tile.object._instance, *cls.selection_color)
+		# Add color to objects on the tiles
+		obj = tile.object
+		if obj is not None:
+			renderer.addColored(obj._instance, *cls.selection_color)
 
 
 class SelectableUnitComponent(SelectableComponent):

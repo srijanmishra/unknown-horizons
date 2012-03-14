@@ -22,8 +22,7 @@
 import logging
 import weakref
 
-from fife.extensions import pychan
-from horizons.gui.widgets.tooltip import TooltipButton
+from fife.extensions.pychan.widgets import Container, Icon, ImageButton
 
 import horizons.main
 from horizons.util.gui import load_uh_widget
@@ -78,11 +77,9 @@ class TabWidget(object):
 		for index, tab in enumerate(self._tabs):
 			# don't add a reference to the
 			tab.add_remove_listener(Callback(on_tab_removal, weakref.ref(self)))
-			container = pychan.Container()
-			background = pychan.Icon()
-			background.name = "bg_%s" % index
-			button = TooltipButton()
-			button.name = index
+			container = Container(name="container_%s" % index)
+			background = Icon(name="bg_%s" % index)
+			button = ImageButton(name=index)
 			if self.current_tab is tab:
 				background.image = tab.button_background_image_active
 				button.up_image = tab.button_active_image
@@ -94,8 +91,8 @@ class TabWidget(object):
 			button.is_focusable = False
 			button.size = (50, 50)
 			button.capture(Callback(self._show_tab, index))
-			if hasattr(tab, 'tooltip') and tab.tooltip is not None:
-				button.tooltip = unicode(tab.tooltip)
+			if hasattr(tab, 'helptext') and tab.helptext is not None:
+				button.helptext = unicode(tab.helptext)
 			container.size = background.size
 			container.addChild(background)
 			container.addChild(button)
@@ -115,7 +112,8 @@ class TabWidget(object):
 			traceback.print_stack()
 			self.log.warn("Invalid tab number %s, available tabs: %s", number, self._tabs)
 			return
-		self.current_tab.hide()
+		if self.current_tab.is_visible():
+			self.current_tab.hide()
 		new_tab = self._tabs[number]
 		old_bg = self.content.findChild(name = "bg_%s" % self._tabs.index(self.current_tab))
 		old_bg.image = self.current_tab.button_background_image

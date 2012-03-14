@@ -18,6 +18,7 @@
 # 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 # ###################################################
 
+import itertools
 import json
 
 import horizons.main
@@ -26,7 +27,6 @@ from fife import fife
 from horizons.util import Point, Rect, Circle
 from horizons.extscheduler import ExtScheduler
 from horizons.util.python.decorators import bind_all
-from horizons.util.python import get_counter
 from horizons.command.unit import Act
 from horizons.world.component.namedcomponent import NamedComponent
 
@@ -70,13 +70,13 @@ class Minimap(object):
 	  "highlight" : "l"
 	  }
 
-	__minimap_id_counter = get_counter()
-	__ship_route_counter = get_counter()
+	__minimap_id_counter = itertools.count()
+	__ship_route_counter = itertools.count()
 	_instances = [] # all active instances
 
 	_dummy_fife_point = fife.Point(0, 0) # use when you quickly need a temporary point
 
-	def __init__(self, position, session, world, view, targetrenderer, imagemanager, renderer=None,
+	def __init__(self, position, session, view, targetrenderer, imagemanager, renderer=None, world=None,
 	             cam_border=True, use_rotation=True, on_click=None, preview=False, tooltip=None):
 		"""
 		@param position: a Rect or a Pychan Icon, where we will draw to
@@ -338,7 +338,7 @@ class Minimap(object):
 	def _show_tooltip(self, event):
 		if hasattr(self, "icon"): # only supported for icon mode atm
 			if self.fixed_tooltip != None:
-				self.icon.tooltip = self.fixed_tooltip
+				self.icon.helptext = self.fixed_tooltip
 				self.icon.position_tooltip(event)
 				#self.icon.show_tooltip()
 			else:
@@ -349,13 +349,14 @@ class Minimap(object):
 
 				tile = self.world.get_tile( Point(*coords) )
 				if tile is not None and tile.settlement is not None:
-					new_tooltip = unicode(tile.settlement.get_component(NamedComponent).name)
-					if self.icon.tooltip != new_tooltip:
-						self.icon.tooltip = new_tooltip
+					new_helptext = unicode(tile.settlement.get_component(NamedComponent).name)
+					if self.icon.helptext != new_helptext:
+						self.icon.helptext = new_helptext
 						self.icon.show_tooltip()
 					else:
 						self.icon.position_tooltip(event)
 				else:
+					# mouse not over relevant part of the minimap
 					self.icon.hide_tooltip()
 
 	def highlight(self, tup, factor=1.0, speed=1.0, finish_callback=None, color=(0,0,0)):

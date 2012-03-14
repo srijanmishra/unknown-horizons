@@ -43,7 +43,7 @@ def test_lumberjack(s, p):
 	assert jack
 
 	assert jack.get_component(StorageComponent).inventory[RES.BOARDS_ID] == 0
-	assert jack.get_component(StorageComponent).inventory[RES.WOOD_ID] == 0
+	assert jack.get_component(StorageComponent).inventory[RES.TREES_ID] == 0
 
 	for (x_off, y_off) in product([-2, 2], repeat=2):
 		x = 30 + x_off
@@ -164,7 +164,7 @@ def test_build_tear(s, p):
 	s.run(seconds=1)
 
 	wid = tree.worldid
-	t = Tear(tree)(p)
+	Tear(tree)(p)
 
 	try:
 		WorldObject.get_object_by_id(wid)
@@ -173,4 +173,24 @@ def test_build_tear(s, p):
 	else:
 		assert False
 
+
+@game_test(timeout=60)
+def test_tree_production(s, p):
+	"""Check whether trees produce wood"""
+	settlement, island = settle(s)
+	tree = Build(BUILDINGS.TREE_CLASS, 30, 35, island, settlement=settlement)(p)
+
+	n = 20
+
+	inv = tree.get_component(StorageComponent).inventory
+	for i in xrange(n):  # we want n units
+
+		while not inv[RES.TREES_ID]:
+			s.run(seconds=5)
+
+		# take one away to free storage space
+		#from tests import set_trace ; set_trace()
+		inv.alter(RES.TREES_ID, -1)
+
+	# here, n tons of wood have been produced
 

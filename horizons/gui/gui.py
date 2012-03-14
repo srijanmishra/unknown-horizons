@@ -23,6 +23,7 @@ import glob
 import os
 import os.path
 import random
+import traceback
 import time
 import tempfile
 import logging
@@ -66,6 +67,7 @@ class Gui(SingleplayerMenu, MultiplayerMenu):
 	  'aidataselection' : 'book',
 	  'select_savegame': 'book',
 	  'ingame_pause': 'book',
+	  'game_settings' : 'book',
 #	  'credits': 'book',
 	  }
 
@@ -177,6 +179,7 @@ class Gui(SingleplayerMenu, MultiplayerMenu):
 			self.show_popup(_('Error'), _('Failed to save.'))
 
 	def show_settings(self):
+		self.on_escape = lambda : horizons.main.fife._setting.OptionsDlg.hide()
 		horizons.main.fife.show_settings()
 
 	_help_is_displayed = False
@@ -259,6 +262,7 @@ class Gui(SingleplayerMenu, MultiplayerMenu):
 		assert mode in ('save', 'load', 'mp_load', 'mp_save')
 		map_files, map_file_display = None, None
 		mp = False
+		args = mode, sanity_checker, sanity_criteria # for reshow
 		if mode.startswith('mp'):
 			mode = mode[3:]
 			mp = True
@@ -280,7 +284,20 @@ class Gui(SingleplayerMenu, MultiplayerMenu):
 		# Prepare widget
 		old_current = self._switch_current_widget('select_savegame')
 		self.current.findChild(name='headline').text = _('Save game') if mode == 'save' else _('Load game')
-		self.current.findChild(name='okButton').tooltip = _('Save game') if mode == 'save' else _('Load game')
+		self.current.findChild(name='okButton').helptext = _('Save game') if mode == 'save' else _('Load game')
+
+		name_box = self.current.findChild(name="gamename_box")
+		if mp and mode == 'load': # have gamename
+			name_box.parent.showChild(name_box)
+			gamename_textfield = self.current.findChild(name="gamename")
+			def clear_gamename_textfield():
+				gamename_textfield.text = u""
+			gamename_textfield.capture(clear_gamename_textfield, 'mouseReleased', 'default')
+		else:
+			if name_box not in name_box.parent.hidden_children:
+				name_box.parent.hideChild(name_box)
+
+		self.current.show()
 
 		if not hasattr(self, 'filename_hbox'):
 			self.filename_hbox = self.current.findChild(name='enter_filename')
@@ -333,7 +350,7 @@ class Gui(SingleplayerMenu, MultiplayerMenu):
 				self.current.distributeData({'savegamelist' : -1})
 				cb()
 			self.current = old_current
-			return self.show_select_savegame(mode=mode)
+			return self.show_select_savegame(*args)
 
 		selected_savegame = None
 		if mode == 'save': # return from textfield
@@ -341,19 +358,19 @@ class Gui(SingleplayerMenu, MultiplayerMenu):
 			if selected_savegame == "":
 				self.show_error_popup(windowtitle = _("No filename given"), description = _("Please enter a valid filename."))
 				self.current = old_current
-				return self.show_select_savegame(mode=mode) # reshow dialog
+				return self.show_select_savegame(*args) # reshow dialog
 			elif selected_savegame in map_file_display: # savegamename already exists
 				#xgettext:python-format
 				message = _("A savegame with the name '{name}' already exists.").format(
 				             name=selected_savegame) + u"\n" + _('Overwrite it?')
 				if not self.show_popup(_("Confirmation for overwriting"), message, show_cancel_button = True):
 					self.current = old_current
-					return self.show_select_savegame(mode=mode) # reshow dialog
+					return self.show_select_savegame(*args) # reshow dialog
 			elif sanity_checker and sanity_criteria:
 				if not sanity_checker(selected_savegame):
 					self.show_error_popup(windowtitle = _("Invalid filename given"), description = sanity_criteria)
 					self.current = old_current
-					return self.show_select_savegame(mode=mode) # reshow dialog
+					return self.show_select_savegame(*args) # reshow dialog
 		else: # return selected item from list
 			selected_savegame = self.current.collectData('savegamelist')
 			selected_savegame = None if selected_savegame == -1 else map_files[selected_savegame]
@@ -361,9 +378,15 @@ class Gui(SingleplayerMenu, MultiplayerMenu):
 				# ok button has been pressed, but no savegame was selected
 				self.show_popup(_("Select a savegame"), _("Please select a savegame or click on cancel."))
 				self.current = old_current
-				return self.show_select_savegame(mode=mode) # reshow dialog
+				return self.show_select_savegame(*args) # reshow dialog
+
+		if mp and mode == 'load': # also name
+			gamename_textfield = self.current.findChild(name="gamename")
+			ret = selected_savegame, self.current.collectData('gamename')
+		else:
+			ret = selected_savegame
 		self.current = old_current # reuse old widget
-		return selected_savegame
+		return ret
 
 # display
 
@@ -427,12 +450,13 @@ class Gui(SingleplayerMenu, MultiplayerMenu):
 		else:
 			return self.show_dialog(popup, {'okButton' : True}, onPressEscape = True)
 
-	def show_error_popup(self, windowtitle, description, advice=None, details=None):
+	def show_error_popup(self, windowtitle, description, advice=None, details=None, _first=True):
 		"""Displays a popup containing an error message.
 		@param windowtitle: title of popup, will be auto-prefixed with "Error: "
 		@param description: string to tell the user what happened
 		@param advice: how the user might be able to fix the problem
 		@param details: technical details, relevant for debugging but not for the user
+		@param _first: Don't touch this.
 
 		Guide for writing good error messages:
 		http://www.useit.com/alertbox/20010624.html
@@ -443,7 +467,15 @@ class Gui(SingleplayerMenu, MultiplayerMenu):
 			msg += advice + u"\n"
 		if details:
 			msg += _(u"Details:") + u" " + details
-		self.show_popup( _(u"Error:") + u" " + windowtitle, msg, show_cancel_button=False)
+		try:
+			self.show_popup( _(u"Error:") + u" " + windowtitle, msg, show_cancel_button=False)
+		except:
+			if _first:
+				traceback.print_exc()
+				print 'Exception while showing error, retrying once more'
+				return self.show_error_popup(windowtitle, description, advice, details, _first=False)
+			else:
+				raise # it persists, we have to die.
 
 	def build_popup(self, windowtitle, message, show_cancel_button = False, size=0):
 		""" Creates a pychan popup widget with the specified properties.
@@ -571,7 +603,7 @@ class Gui(SingleplayerMenu, MultiplayerMenu):
 				#xgettext:python-format
 				details_label.text += _("Saved at {time}").format(
 				                         time=time.strftime("%c",
-				                         time.localtime(savegame_info['timestamp'])))
+				                         time.localtime(savegame_info['timestamp'])).decode('utf-8'))
 			details_label.text += u'\n'
 			counter = savegame_info['savecounter']
 			# N_ takes care of plural forms for different languages
@@ -665,4 +697,4 @@ def build_help_strings(widgets):
 		lbl[0].text = HELPSTRING_LAYOUT.format(text=_(lbl[0].text), key=keyname.upper())
 
 	author_label = widgets.findChild(name='fife_and_uh_team')
-	author_label.tooltip = u"www.unknown-[br]horizons.org[br]www.fifengine.net"
+	author_label.helptext = u"www.unknown-[br]horizons.org[br]www.fifengine.net"

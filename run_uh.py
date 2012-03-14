@@ -37,6 +37,7 @@ import os
 import os.path
 import gettext
 import time
+import functools
 import locale
 import logging
 import logging.config
@@ -46,7 +47,8 @@ import signal
 import traceback
 import platform
 
-from horizons.constants import PATHS, VERSION
+# NOTE: do NOT import anything from horizons.* into global scope
+# this will break any run_uh imports from other locations (e.g. _get_version())
 
 def log():
 	"""Returns Logger"""
@@ -81,6 +83,7 @@ def find_uh_position():
 
 def get_option_parser():
 	"""Returns inited OptionParser object"""
+	from horizons.constants import VERSION
 	p = optparse.OptionParser(usage="%prog [options]", version=VERSION.string())
 	p.add_option("-d", "--debug", dest="debug", action="store_true", \
 				       default=False, help="Enable debug output to stderr and a logfile.")
@@ -157,14 +160,15 @@ def get_option_parser():
 	                     help="Create an multiplayer game with default settings.")
 	dev_group.add_option("--join-mp-game", action="store_true", dest="join_mp_game", \
 	                     help="Join first multiplayer game.")
-	p.add_option_group(dev_group)
-	p.add_option_group(dev_group)
+	dev_group.add_option("--interactive-shell", action="store_true", dest="interactive_shell",
+	                     help="Starts an IPython kernel. Connect to the shell with: ipython console --existing")
 	p.add_option_group(dev_group)
 
 	return p
 
 def create_user_dirs():
 	"""Creates the userdir and subdirs. Includes from horizons."""
+	from horizons.constants import PATHS
 	for directory in (PATHS.USER_DIR, PATHS.LOG_DIR, PATHS.SCREENSHOT_DIR):
 		if not os.path.isdir(directory):
 			os.makedirs(directory)
@@ -184,29 +188,24 @@ def excepthook_creator(outfilename):
 		print _('We are very sorry for this and want to fix underlying error.')
 		print _('In order to do this, we need the information from the logfile:')
 		print outfilename
-		print _('Please give it to us via IRC or our forum, for both see unknown-horizons.org .')
+		print _('Please give it to us via IRC or our forum, for both see http://unknown-horizons.org .')
 	return excepthook
 
-def exithandler(signum, frame):
+def exithandler(exitcode, signum, frame):
 	"""Handles a kill quietly"""
 	signal.signal(signal.SIGINT, signal.SIG_IGN)
 	signal.signal(signal.SIGTERM, signal.SIG_IGN)
-	try:
-		import horizons.main
-		horizons.main.quit()
-	except ImportError:
-		pass
 	print
 	print 'Oh my god! They killed UH.'
 	print 'You bastards!'
 	if logfile:
 		logfile.close()
-	sys.exit(1)
+	sys.exit(exitcode)
 
 def main():
 	# abort silently on signal
-	signal.signal(signal.SIGINT, exithandler)
-	signal.signal(signal.SIGTERM, exithandler)
+	signal.signal(signal.SIGINT, functools.partial(exithandler, 130))
+	signal.signal(signal.SIGTERM, functools.partial(exithandler, 1))
 
 	# use locale-specific time.strftime handling
 	locale.setlocale(locale.LC_TIME, '')
@@ -219,7 +218,8 @@ def main():
 
 	create_user_dirs()
 
-	options = parse_args()
+	options = get_option_parser().parse_args()[0]
+	setup_debugging(options)
 
 	# NOTE: this might cause a program restart
 	init_environment()
@@ -247,6 +247,7 @@ def main():
 		except ImportError:
 			import profile
 
+		from horizons.constants import PATHS
 		profiling_dir = os.path.join(PATHS.USER_DIR, 'profiling')
 		if not os.path.exists(profiling_dir):
 			os.makedirs(profiling_dir)
@@ -262,12 +263,16 @@ def main():
 		print _('Thank you for using Unknown Horizons!')
 
 
-def parse_args():
+def setup_debugging(options):
 	"""Parses and applies options
-	@returns option object from Parser
+	@param options: parameters: debug, debug_module, debug_log_only, logfile
 	"""
-	global logfilename
-	options = get_option_parser().parse_args()[0]
+	global logfilename, logfile
+
+	# not too nice way of sharing code, but it is necessary because code from this file
+	# can't be accessed elsewhere on every distribution, and we can't just access other code.
+	# however passing options is guaranteed to work
+	options.setup_debugging = setup_debugging
 
 	# apply options
 	if options.debug or options.debug_log_only:
@@ -281,6 +286,7 @@ def parse_args():
 		options.debug = True
 		# also log to file
 		# init a logfile handler with a dynamic filename
+		from horizons.constants import PATHS
 		if options.logfile:
 			logfilename = options.logfile
 		else:
@@ -306,6 +312,9 @@ def parse_args():
 				except UnicodeEncodeError:
 					# python unicode handling is weird, this has been empirically proven to work
 					logfile.write( line.encode("UTF-8") )
+			def flush(self):
+				sys.__stdout__.flush()
+				logfile.flush()
 		sys.stdout = StdOutDuplicator()
 
 		# add a handler to stderr too _but_ only if logfile isn't already a tty
@@ -316,8 +325,6 @@ def parse_args():
 			logging.getLogger().addHandler( logging.StreamHandler(sys.stderr) )
 
 		log_sys_info()
-
-	return options
 
 
 """

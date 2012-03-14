@@ -23,7 +23,7 @@ from fife.extensions.pychan import widgets
 
 from horizons.constants import GAME_SPEED
 from horizons.gui.widgets.statswidget import StatsWidget
-from horizons.gui.widgets.tooltip import TooltipButton
+from fife.extensions.pychan.widgets import ImageButton
 from horizons.scheduler import Scheduler
 from horizons.util import Callback
 from horizons.util.python import decorators
@@ -77,10 +77,11 @@ class PlayersShips(StatsWidget):
 		ship_name.text = unicode(ship.get_component(NamedComponent).name)
 		ship_name.min_size = ship_name.max_size = (100, 20)
 
-		rename_icon = TooltipButton(name = 'rename_%d' % ship.worldid)
+		rename_icon = ImageButton(name = 'rename_%d' % ship.worldid)
 		rename_icon.up_image = "content/gui/images/background/rename_feather_20.png"
 		rename_icon.hover_image = "content/gui/images/background/rename_feather_20_h.png"
-		rename_icon.tooltip = _("Click to change the name of this ship")
+		rename_icon.helptext = _("Click to change the name of this ship")
+		rename_icon.max_size = (20, 20) # (width, height)
 
 		ship_type = widgets.Label(name = 'ship_type_%d' % ship.worldid)
 		ship_type.text = unicode(ship.classname)

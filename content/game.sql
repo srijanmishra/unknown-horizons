@@ -60,11 +60,13 @@ INSERT INTO "sounds" VALUES('content/audio/sounds/chapel.ogg',7);
 INSERT INTO "sounds" VALUES('content/audio/sounds/ships_bell.ogg',8);
 INSERT INTO "sounds" VALUES('content/audio/sounds/invalid.ogg',9);
 INSERT INTO "sounds" VALUES('content/audio/sounds/flippage.ogg',10);
+INSERT INTO "sounds" VALUES('content/audio/sounds/success.ogg',11);
 CREATE TABLE "sounds_special" ("type" TEXT NOT NULL  DEFAULT '', "sound" INTEGER NOT NULL  DEFAULT '');
 INSERT INTO "sounds_special" VALUES('build',3);
 INSERT INTO "sounds_special" VALUES('message',8);
 INSERT INTO "sounds_special" VALUES('error',9);
 INSERT INTO "sounds_special" VALUES('flippage',10);
+INSERT INTO "sounds_special" VALUES('success',11);
 CREATE TABLE "message_icon" ("icon_id" INTEGER NOT NULL, "up_image" TEXT NOT NULL, "down_image" TEXT NOT NULL  DEFAULT '""', "hover_image" TEXT NOT NULL  DEFAULT '""');
 INSERT INTO "message_icon" VALUES(1,'content/gui/icons/widgets/messages/msg_letter_n.png','content/gui/icons/widgets/messages/msg_letter_d.png','content/gui/icons/widgets/messages/msg_letter_h.png');
 INSERT INTO "message_icon" VALUES(2,'content/gui/icons/widgets/messages/msg_system_n.png','content/gui/icons/widgets/messages/msg_system_d.png','content/gui/icons/widgets/messages/msg_system_h.png');
@@ -137,9 +139,13 @@ INSERT INTO "collector_restrictions" VALUES(1000011,4);
 INSERT INTO "collector_restrictions" VALUES(1000011,5);
 INSERT INTO "collector_restrictions" VALUES(1000011,21);
 INSERT INTO "collector_restrictions" VALUES(1000011,32);
+
 CREATE TABLE "message" ("text" TEXT NOT NULL ,"icon" INTEGER NOT NULL ,"visible_for" FLOAT NOT NULL ,"speech_group_id" INTEGER,"id_string" STRING);
+-- When you add new message groups, remember to update  horizons/i18n/voice.py !
+INSERT INTO "message" VALUES('{player}: {message}',1,30.0,NULL,'CHAT');
 INSERT INTO "message" VALUES('A new settlement was founded by {player}.',1,30.0,2,'NEW_SETTLEMENT');
 INSERT INTO "message" VALUES('A new world has been created.',1,15.0,1,'NEW_WORLD');
+INSERT INTO "message" VALUES('A new ship has been created.',1,15.0,1,'NEW_UNIT');
 INSERT INTO "message" VALUES('Your game has been saved.',3,15.0,NULL,'SAVED_GAME');
 INSERT INTO "message" VALUES('Your game has been autosaved.',3,15.0,NULL,'AUTOSAVE');
 INSERT INTO "message" VALUES('Your game has been quicksaved.',3,15.0,NULL,'QUICKSAVE');
@@ -496,7 +502,7 @@ INSERT INTO "resource" VALUES(1,'boards',1.25,4,1);
 INSERT INTO "resource" VALUES(1,'food',2,5,1);
 INSERT INTO "resource" VALUES(1,'tools',18.5,6,1);
 INSERT INTO "resource" VALUES(1,'bricks',15,7,1);
-INSERT INTO "resource" VALUES(0,'wood',1,8,1);
+INSERT INTO "resource" VALUES(0,'trees',1,8,1);
 INSERT INTO "resource" VALUES(0,'grass',0,9,0);
 -- tradeable   name   value   id   show_inv
 INSERT INTO "resource" VALUES(1,'wool',2.5,10,1);
