@@ -66,6 +66,8 @@ class Production(ChangeListener):
 		self.__init(inventory, owner_inventory, prod_id, prod_data, PRODUCTION.STATES.none, Scheduler().cur_tick)
 
 		if not load and not start_finished:
+			# TODO: refactor production starting now the state is set multiple times
+			self._state = PRODUCTION.STATES.waiting_for_res
 			self._add_listeners()
 
 	def start(self):
@@ -132,7 +134,7 @@ class Production(ChangeListener):
 				 self._state == PRODUCTION.STATES.inventory_full:
 			self._add_listeners()
 
-		self._state_history = db.get_production_state_history(worldid)
+		self._state_history = db.get_production_state_history(worldid, self.prod_id)
 
 	def remove(self):
 		self._remove_listeners()
