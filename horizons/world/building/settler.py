@@ -27,17 +27,19 @@ from horizons.scheduler import Scheduler
 from horizons.gui.tabs import SettlerOverviewTab
 from horizons.world.building.building import BasicBuilding
 from horizons.world.building.buildable import BuildableRect, BuildableSingle
-from horizons.constants import RES, BUILDINGS, GAME, SETTLER
+from horizons.constants import RES, BUILDINGS, GAME, TIER
 from horizons.world.building.buildingresourcehandler import BuildingResourceHandler
 from horizons.world.production.production import SettlerProduction, SingleUseProduction
 from horizons.command.building import Build
 from horizons.util import Callback
-from horizons.world.pathfinding.pather import StaticPather
+from horizons.util.pathfinding.pather import StaticPather
 from horizons.command.production import ToggleActive
-from horizons.world.component.storagecomponent import StorageComponent
+from horizons.component.storagecomponent import StorageComponent
+from horizons.component.settlerupgradecomponent import SettlerUpgradeComponent
 from horizons.world.status import SettlerUnhappyStatus
 from horizons.world.production.producer import Producer
-from horizons.util.messaging.message import AddStatusIcon, RemoveStatusIcon, SettlerUpdate, SettlerInhabitantsChanged, UpgradePermissionsChanged
+from horizons.messaging import AddStatusIcon, RemoveStatusIcon, SettlerUpdate, SettlerInhabitantsChanged, UpgradePermissionsChanged
+from horizons.component.settlerupgradecomponent import SettlerUpgradeComponent
 
 class SettlerRuin(BasicBuilding, BuildableSingle):
 	"""Building that appears when a settler got unhappy. The building does nothing.
@@ -65,17 +67,17 @@ class Settler(BuildableRect, BuildingResourceHandler, BasicBuilding):
 		super(Settler, self).__init__(x=x, y=y, owner=owner, instance=instance, **kwargs)
 
 	def __init(self, loading = False, last_tax_payed=0):
-		self.level_max = SETTLER.CURRENT_MAX_INCR # for now
+		self.level_max = TIER.CURRENT_MAX # for now
 		self._update_level_data(loading=loading, initial=True)
 		self.last_tax_payed = last_tax_payed
-		self.session.message_bus.subscribe_locally(UpgradePermissionsChanged, self.settlement, self._on_change_upgrade_permissions)
+		UpgradePermissionsChanged.subscribe(self._on_change_upgrade_permissions, sender=self.settlement)
 
 	def initialize(self):
 		super(Settler, self).initialize()
-		self.session.message_bus.broadcast(SettlerInhabitantsChanged(self, self.inhabitants))
+		SettlerInhabitantsChanged.broadcast(self, self.inhabitants)
 		happiness = self.__get_data("happiness_init_value")
 		if happiness is not None:
-			self.get_component(StorageComponent).inventory.alter(RES.HAPPINESS_ID, happiness)
+			self.get_component(StorageComponent).inventory.alter(RES.HAPPINESS, happiness)
 		if self.has_status_icon:
 			self.get_component(StorageComponent).inventory.add_change_listener( self._update_status_icon )
 		# give the user a month (about 30 seconds) to build a main square in range
@@ -100,7 +102,7 @@ class Settler(BuildableRect, BuildingResourceHandler, BasicBuilding):
 		    db("SELECT ticks FROM remaining_ticks_of_month WHERE rowid=?", worldid)[0][0]
 		self.__init(loading = True, last_tax_payed = last_tax_payed)
 		self._load_upgrade_data(db)
-		self.session.message_bus.broadcast(SettlerUpdate(self, self.level))
+		SettlerUpdate.broadcast(self, self.level, self.level)
 		self.run(remaining_ticks)
 
 	def _load_upgrade_data(self, db):
@@ -113,8 +115,10 @@ class Settler(BuildableRect, BuildingResourceHandler, BasicBuilding):
 		for resource, amount in db.get_storage_rowids_by_ownerid(self.worldid):
 			resources[resource] = amount
 
+		# set limits to what we need
 		for res, amount in upgrade_material_production.get_consumed_resources().iteritems():
 			self.get_component(StorageComponent).inventory.add_resource_slot(res, abs(amount))
+			# [assumption added later] loading this could not have worked before because the slot was limited to 0
 			if res in resources:
 				self.get_component(StorageComponent).inventory.alter(res, resources[res])
 
@@ -122,13 +126,13 @@ class Settler(BuildableRect, BuildingResourceHandler, BasicBuilding):
 		self.log.debug("%s: Waiting for material to upgrade from %s", self, self.level)
 
 	def _get_upgrade_production(self):
-		upgrade_material_prodline = self.session.db.get_settler_upgrade_material_prodline(self.level+1)
+		upgrade_material_prodline = SettlerUpgradeComponent.get_production_line_id(self.level+1)
 		if self.get_component(Producer).has_production_line(upgrade_material_prodline):
 			return self.get_component(Producer)._get_production(upgrade_material_prodline)
 		return None
 
 	def remove(self):
-		self.session.message_bus.unsubscribe_locally(UpgradePermissionsChanged, self.settlement, self._on_change_upgrade_permissions)
+		UpgradePermissionsChanged.unsubscribe(self._on_change_upgrade_permissions, sender=self.settlement)
 		super(Settler, self).remove()
 
 	@property
@@ -144,8 +148,8 @@ class Settler(BuildableRect, BuildingResourceHandler, BasicBuilding):
 	@property
 	def happiness(self):
 		difficulty = self.owner.difficulty
-		result = int(round(difficulty.extra_happiness_constant + self.get_component(StorageComponent).inventory[RES.HAPPINESS_ID] * difficulty.happiness_multiplier))
-		return max(0, min(result, self.get_component(StorageComponent).inventory.get_limit(RES.HAPPINESS_ID)))
+		result = int(round(difficulty.extra_happiness_constant + self.get_component(StorageComponent).inventory[RES.HAPPINESS] * difficulty.happiness_multiplier))
+		return max(0, min(result, self.get_component(StorageComponent).inventory.get_limit(RES.HAPPINESS)))
 
 	@property
 	def capacity_utilisation(self):
@@ -211,7 +215,7 @@ class Settler(BuildableRect, BuildingResourceHandler, BasicBuilding):
 		taxes = self.tax_base * self.settlement.tax_settings[self.level] *  happiness_tax_modifier * inhabitants_tax_modifier
 		real_taxes = int(round(taxes * self.owner.difficulty.tax_multiplier))
 
-		self.settlement.owner.get_component(StorageComponent).inventory.alter(RES.GOLD_ID, real_taxes)
+		self.settlement.owner.get_component(StorageComponent).inventory.alter(RES.GOLD, real_taxes)
 		self.last_tax_payed = real_taxes
 
 		# decrease happiness http://wiki.unknown-horizons.org/w/Settler_taxing#Formulae
@@ -223,7 +227,7 @@ class Settler(BuildableRect, BuildingResourceHandler, BasicBuilding):
 		# to simulate the more dynamic, currently implemented approach (where every event changes
 		# the happiness), we simulate discontent of taxes by this:
 		happiness_decrease -= 6
-		self.get_component(StorageComponent).inventory.alter(RES.HAPPINESS_ID, happiness_decrease)
+		self.get_component(StorageComponent).inventory.alter(RES.HAPPINESS, happiness_decrease)
 		self._changed()
 		self.log.debug("%s: pays %s taxes, -happy: %s new happiness: %s", self, real_taxes, \
 									 happiness_decrease, self.happiness)
@@ -244,7 +248,7 @@ class Settler(BuildableRect, BuildingResourceHandler, BasicBuilding):
 			# see http://wiki.unknown-horizons.org/w/Supply_citizens_with_resources
 			self.get_component(Producer).alter_production_time( 6.0/7.0 * math.log( 1.5 * (self.inhabitants + 1.2) ) )
 			self.inhabitants += change
-			self.session.message_bus.broadcast(SettlerInhabitantsChanged(self, change))
+			SettlerInhabitantsChanged.broadcast(self, change)
 			self._changed()
 
 	def level_check(self):
@@ -260,10 +264,10 @@ class Settler(BuildableRect, BuildingResourceHandler, BasicBuilding):
 				return
 			# add a production line that gets the necessary upgrade material.
 			# when the production finishes, it calls upgrade_materials_collected.
-			upgrade_material_prodline = self.session.db.get_settler_upgrade_material_prodline(self.level+1)
+			upgrade_material_prodline = SettlerUpgradeComponent.get_production_line_id(self.level+1)
 			if self.get_component(Producer).has_production_line(upgrade_material_prodline):
 				return # already waiting for res
-			prodline_data = self.session.db.get_production_line_data(upgrade_material_prodline)
+			prodline_data = self.get_component(SettlerUpgradeComponent).get_production_line_data(self.level+1)
 			owner_inventory = self._get_owner_inventory()
 			upgrade_material_production = SingleUseProduction(self.get_component(StorageComponent).inventory, owner_inventory, \
 			                                                  upgrade_material_prodline, prodline_data)
@@ -291,10 +295,10 @@ class Settler(BuildableRect, BuildingResourceHandler, BasicBuilding):
 			self._update_level_data()
 
 			# Notify the world about the level up
-			self.session.message_bus.broadcast(SettlerUpdate(self, self.level))
+			SettlerUpdate.broadcast(self, self.level, 1)
 
 			# reset happiness value for new level
-			self.get_component(StorageComponent).inventory.alter(RES.HAPPINESS_ID, self.__get_data("happiness_init_value") - self.happiness)
+			self.get_component(StorageComponent).inventory.alter(RES.HAPPINESS, self.__get_data("happiness_init_value") - self.happiness)
 			self._changed()
 
 		Scheduler().add_new_object(_do_level_up, self, run_in=0)
@@ -302,7 +306,7 @@ class Settler(BuildableRect, BuildingResourceHandler, BasicBuilding):
 	def level_down(self):
 		if self.level == 0: # can't level down any more
 			# replace this building with a ruin
-			command = Build(BUILDINGS.SETTLER_RUIN_CLASS, self.position.origin.x, \
+			command = Build(BUILDINGS.SETTLER_RUIN, self.position.origin.x, \
 			                self.position.origin.y, island=self.island, settlement=self.settlement)
 
 			Scheduler().add_new_object(
@@ -318,16 +322,19 @@ class Settler(BuildableRect, BuildingResourceHandler, BasicBuilding):
 			self.level -= 1
 			self._update_level_data()
 			# reset happiness value for new level
-			self.get_component(StorageComponent).inventory.alter(RES.HAPPINESS_ID, self.__get_data("happiness_init_value") - self.happiness)
+			self.get_component(StorageComponent).inventory.alter(RES.HAPPINESS, self.__get_data("happiness_init_value") - self.happiness)
 			self.log.debug("%s: Level down to %s", self, self.level)
 			self._changed()
+
+			# Notify the world about the level down
+			SettlerUpdate.broadcast(self, self.level, -1)
 
 	def _check_main_square_in_range(self):
 		"""Notifies the user via a message in case there is no main square in range"""
 		if not self.owner.is_local_player:
 			return # only check this for local player
 		for building in self.get_buildings_in_range():
-			if building.id == BUILDINGS.MAIN_SQUARE_CLASS:
+			if building.id == BUILDINGS.MAIN_SQUARE:
 				if StaticPather.get_path_on_roads(self.island, self, building) is not None:
 					# a main square is in range
 					return
@@ -346,9 +353,9 @@ class Settler(BuildableRect, BuildingResourceHandler, BasicBuilding):
 			# check for changes
 			if unhappy and not hasattr(self, "_settler_status_icon"):
 				self._settler_status_icon = SettlerUnhappyStatus(self) # save ref for removal later
-				self.session.message_bus.broadcast(AddStatusIcon(self, self._settler_status_icon))
+				AddStatusIcon.broadcast(self, self._settler_status_icon)
 			if not unhappy and hasattr(self, "_settler_status_icon"):
-				self.session.message_bus.broadcast(RemoveStatusIcon(self, self, SettlerUnhappyStatus))
+				RemoveStatusIcon.broadcast(self, self, SettlerUnhappyStatus)
 				del self._settler_status_icon
 
 	def __str__(self):

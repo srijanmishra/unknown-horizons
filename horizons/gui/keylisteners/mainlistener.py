@@ -76,12 +76,12 @@ class MainListener(fife.IKeyListener, fife.ConsoleExecuter, LivingObject):
 		action = KeyConfig().translate(evt)
 		_Actions = KeyConfig._Actions
 
+		key_event_handled = True
+
 		if action == _Actions.ESCAPE:
 			self.gui.on_escape()
-			evt.consume()
 		elif action == _Actions.CONSOLE:
 			horizons.main.fife.console.toggleShowHide()
-			evt.consume()
 		elif action == _Actions.HELP:
 			self.gui.on_help()
 		elif action == _Actions.SCREENSHOT:
@@ -98,11 +98,15 @@ class MainListener(fife.IKeyListener, fife.ConsoleExecuter, LivingObject):
 				# ingame message if there is a session
 				self.gui.session.ingame_gui.message_widget.add(None, None, 'SCREENSHOT', \
 																													{'file': screenshotfilename})
-			evt.consume()
 		elif action == _Actions.QUICKLOAD:
 			from horizons.main import _load_last_quicksave
 			_load_last_quicksave(self.gui.session)
-			evt.consume()
+		else:
+			key_event_handled = False # nope, nothing triggered
+
+		if key_event_handled:
+			evt.consume() # prevent other listeners from being called
+
 
 
 	def keyReleased(self, evt):
@@ -127,7 +131,7 @@ class MainListener(fife.IKeyListener, fife.ConsoleExecuter, LivingObject):
 		self.commandbuffer = ''
 		oldout = sys.stdout
 		class console_file(object):
-			def __init__(self, copy = None):
+			def __init__(self, copy=None):
 				self.buffer = ''
 				self.copy = copy
 			def write(self, string):
