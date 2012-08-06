@@ -44,7 +44,9 @@ from horizons.command.uioptions import RenameObject
 from horizons.command.misc import Chat
 from horizons.command.game import SpeedDownCommand, SpeedUpCommand
 from horizons.gui.tabs.tabinterface import TabInterface
+from horizons.gui.tabs import MainSquareOverviewTab
 from horizons.component.namedcomponent import SettlementNameComponent, NamedComponent
+from horizons.component.ambientsoundcomponent import AmbientSoundComponent
 from horizons.component.selectablecomponent import SelectableComponent
 from horizons.messaging import SettlerUpdate, SettlerInhabitantsChanged, ResourceBarResize, HoverSettlementChanged, TabWidgetChanged
 from horizons.util.lastactiveplayersettlementmanager import LastActivePlayerSettlementManager
@@ -231,16 +233,19 @@ class IngameGui(LivingObject):
 
 	def update_settlement(self):
 		cityinfo = self.widgets['city_info']
+		city_name_label = cityinfo.findChild(name="city_name")
 		if self.settlement.owner.is_local_player: # allow name changes
 			cb = Callback(self.show_change_name_dialog, self.settlement)
 			helptext = _("Click to change the name of your settlement")
+			city_name_label.enable_cursor_change_on_hover()
 		else: # no name changes
-			cb = lambda : 42
+			cb = lambda : AmbientSoundComponent.play_special('error')
 			helptext = u""
+			city_name_label.disable_cursor_change_on_hover()
 		cityinfo.mapEvents({
 			'city_name': cb
 		})
-		cityinfo.findChild(name="city_name").helptext = helptext
+		city_name_label.helptext = helptext
 
 		foundlabel = cityinfo.child_finder('owner_emblem')
 		foundlabel.image = 'content/gui/images/tabwidget/emblems/emblem_%s.png' % (self.settlement.owner.color.name)
@@ -270,8 +275,8 @@ class IngameGui(LivingObject):
 		players.add(self.session.world.pirate)
 		players.discard(self.session.world.player)
 		players.discard(None) # e.g. when the pirate is disabled
-		if len(players) == 0: # this dialog is pretty useless in this case
-			self.main_gui.show_popup(_("No diplomacy possible"), \
+		if not players: # this dialog is pretty useless in this case
+			self.main_gui.show_popup(_("No diplomacy possible"),
 			                         _("Cannot do diplomacy as there are no other players."))
 			return
 
@@ -305,7 +310,7 @@ class IngameGui(LivingObject):
 			tab = TabWidget(self, tabs=[ TabInterface(widget="buildtab_no_settlement.xml") ])
 		else:
 			btabs = BuildTab.create_tabs(self.session, self._build)
-			tab = TabWidget(self, tabs=btabs, name="build_menu_tab_widget", \
+			tab = TabWidget(self, tabs=btabs, name="build_menu_tab_widget",
 											active_tab=BuildTab.last_active_build_tab)
 		self.show_menu(tab)
 
@@ -327,8 +332,6 @@ class IngameGui(LivingObject):
 
 	def toggle_road_tool(self):
 		if not isinstance(self.session.cursor, BuildingTool) or self.session.cursor._class.id != BUILDINGS.TRAIL:
-			if isinstance(self.session.cursor, BuildingTool):
-				print self.session.cursor._class.id, BUILDINGS.TRAIL
 			self._build(BUILDINGS.TRAIL)
 		else:
 			self.session.set_cursor()
@@ -425,7 +428,7 @@ class IngameGui(LivingObject):
 		"""
 		new_name = self.widgets['change_name'].collectData('new_name')
 		self.widgets['change_name'].findChild(name='new_name').text = u''
-		if not (len(new_name) == 0 or new_name.isspace()):
+		if not new_name or new_name.isspace():
 			# different namedcomponent classes share the name
 			RenameObject(instance.get_component_by_name(NamedComponent.NAME), new_name).execute(self.session)
 		self._hide_change_name_dialog()
@@ -494,6 +497,12 @@ class IngameGui(LivingObject):
 			if hasattr(menu, "name") and menu.name == "build_menu_tab_widget":
 				# player changed and build menu is currently displayed
 				self.show_build_menu(update=True)
+
+			# TODO: Use a better measure then first tab
+			# Quite fragile, makes sure the tablist in the mainsquare menu is updated
+			if hasattr(menu, '_tabs') and isinstance(menu._tabs[0], MainSquareOverviewTab):
+				instance = list(self.session.selected_instances)[0]
+				instance.get_component(SelectableComponent).show_menu(jump_to_tabclass=type(menu.current_tab))
 
 	def show_chat_dialog(self):
 		"""Show a dialog where the user can enter a chat message"""

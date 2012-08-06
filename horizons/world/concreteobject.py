@@ -63,7 +63,7 @@ class ConcreteObject(WorldObject):
 
 	def save(self, db):
 		super(ConcreteObject, self).save(db)
-		db("INSERT INTO concrete_object(id, action_runtime, action_set_id) VALUES(?, ?, ?)", self.worldid, \
+		db("INSERT INTO concrete_object(id, action_runtime, action_set_id) VALUES(?, ?, ?)", self.worldid,
 			 self._instance.getActionRuntime(), self._action_set_id)
 
 	def load(self, db, worldid):
@@ -81,9 +81,17 @@ class ConcreteObject(WorldObject):
 			self._instance.setActionRuntime(runtime)
 		Scheduler().add_new_object( Callback(set_action_runtime, self, runtime), self, run_in=0)
 
-	def act(self, action, facing_loc=None, repeating=False):
+	def act(self, action, facing_loc=None, repeating=False, force_restart=True):
+		"""
+		@param repeating: maps to fife, currently broken: http://fife.trac.cvsdude.com/engine/ticket/708
+		@param force_restart: whether to always restart, even if action is already displayed
+		"""
 		if not self.has_action(action):
 			action = 'idle'
+
+		if not force_restart and self._action == action:
+			return
+
 		# TODO This should not happen, this is a fix for the component introduction
 		# Should be fixed as soon as we move concrete object to a component as well
 		# which ensures proper initialization order for loading and initing

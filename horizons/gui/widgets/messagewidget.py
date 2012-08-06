@@ -19,6 +19,8 @@
 # 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 # ###################################################
 
+import logging
+
 import textwrap
 import itertools
 
@@ -51,6 +53,8 @@ class MessageWidget(LivingObject):
 	_DUPLICATE_SPACE_THRESHOLD = 8 # distance
 
 	OVERVIEW_WIDGET = 'messagewidget_overview.xml'
+	
+	log = logging.getLogger('gui.widgets.messagewidget')	
 
 	def __init__(self, session):
 		super(MessageWidget, self).__init__()
@@ -76,44 +80,40 @@ class MessageWidget(LivingObject):
 		self._last_message = {} # used to detect fast subsequent messages in add()
 		self.draw_widget()
 
-	def add(self, x, y, string_id, message_dict=None, creation_tick=None, sound_file=True, check_duplicate=False):
+	def add(self, string_id, point=None, msg_type=None, message_dict=None, play_sound=True, check_duplicate=False):
 		"""Adds a message to the MessageWidget.
-		@param x, y: int coordinates where the action took place. Clicks on the message will then focus that spot.
+		@param point: point where the action took place. Clicks on the message will then focus that spot.
 		@param id: message id string, needed to retrieve the message text from the content database.
+		@param type: message type; determines what happens on click
 		@param message_dict: dict with strings to replace in the message, e.g. {'player': 'Arthus'}
-		@param sound_file: if True: play default message speech for string_id
-		                   if False: do not play sound
-		                   if sound file path: play this sound file
+		@param play_sound: whether to play the default message speech for string_id
 		@param check_duplicate: check for pseudo-duplicates (similar messages recently nearby)
 		"""
 		if check_duplicate:
 			if string_id in self._last_message:
 				when, where = self._last_message[string_id]
 				if when > Scheduler().cur_tick - Scheduler().get_ticks(self.__class__._DUPLICATE_TIME_THRESHOLD) and \
-				   where.distance( (x, y) ) < self.__class__._DUPLICATE_SPACE_THRESHOLD:
+				   where.distance(point) < self.__class__._DUPLICATE_SPACE_THRESHOLD:
 					# there has been a message nearby recently, abort
 					return
-			self._last_message[string_id] = (Scheduler().cur_tick, Point(x, y))
+			self._last_message[string_id] = (Scheduler().cur_tick, point)
 
-		sound = {
-							True: get_speech_file(string_id),
-							False: None
-							}.get(sound_file, sound_file)
-		self._add_message(Message(x, y, string_id, created=self.msgcount.next(), message_dict=message_dict), sound)
+		sound = get_speech_file(string_id) if play_sound else None
+		return self._add_message(Message(point, string_id, msg_type=msg_type, created=self.msgcount.next(), message_dict=message_dict), sound)
 
-	def add_custom(self, x, y, messagetext, visible_for=40, icon_id=1):
+	def add_custom(self, messagetext, point=None, msg_type=None, visible_for=40, icon_id=1):
 		""" See docstring for add().
 		Uses no predefined message template from content database like add() does.
 		Instead, directly provides text and icon to be shown (messagetext, icon_id)
 		@param visible_for: how many seconds the message will stay visible in the widget
 		"""
-		self._add_message(Message(x, y, None, display=visible_for, created=self.msgcount.next(), message=messagetext, icon_id=icon_id))
+		return self._add_message(Message(point=point, id=None, msg_type=msg_type, display=visible_for, created=self.msgcount.next(), message=messagetext, icon_id=icon_id))
 
 	def add_chat(self, player, messagetext, icon_id=1):
 		""" See docstring for add().
 		"""
 		message_dict = {'player': player, 'message': messagetext}
-		self.add(x=None, y=None, string_id='CHAT', message_dict=message_dict)
+		self.add(point=None, string_id='CHAT', msg_type=None, message_dict=message_dict)
 		self.chat.append(self.active_messages[0])
 
 	def _add_message(self, message, sound=None):
@@ -136,6 +136,10 @@ class MessageWidget(LivingObject):
 		self.draw_widget()
 		self.show_text(0)
 		ExtScheduler().add_new_object(self.hide_text, self, self.SHOW_NEW_MESSAGE_TEXT)
+		
+		self.session.ingame_gui.logbook.display_message_history() # update message history on new message
+		
+		return message.created
 
 	def draw_widget(self):
 		"""
@@ -157,14 +161,24 @@ class MessageWidget(LivingObject):
 					button.name + "/mouseEntered": Callback(self.show_text, index),
 					button.name + "/mouseExited": self.hide_text
 				}
+				# init callback to something callable to improve robustness
+				callback = Callback(lambda: None)
 				if message.x is not None and message.y is not None:
 					# move camera to source of event on click, if there is a source
 					callback = Callback.ChainedCallbacks(
-					  Callback(self.session.view.center, message.x, message.y),
-					  Callback(self.session.ingame_gui.minimap.highlight, (message.x, message.y) )
+					        callback, # this makes it so the order of callback assignment doesn't matter
+					        Callback(self.session.view.center, message.x, message.y),
+					        Callback(self.session.ingame_gui.minimap.highlight, (message.x, message.y) )
+				        )
+				if message.type == "logbook":
+					# open logbook to relevant page
+					callback = Callback.ChainedCallbacks(
+					        callback, # this makes it so the order of callback assignment doesn't matter
+					        Callback(self.session.ingame_gui.logbook.show, message.created)
 					)
+				if callback:
 					events[button.name] = callback
-
+				
 				button.mapEvents(events)
 				button_space.addChild(button)
 		button_space.resizeToContent()
@@ -237,11 +251,11 @@ class MessageWidget(LivingObject):
 	def load(self, db):
 		messages = db("SELECT id, x, y, read, created, display, message FROM message_widget_active ORDER BY created ASC")
 		for (msg_id, x, y, read, created, display, message) in messages:
-			msg = Message(x, y, msg_id, created, bool(read), bool(display), message)
+			msg = Message(point=Point(x, y), id=msg_id, created=created, read=bool(read), display=bool(display), message=message)
 			self.active_messages.append(msg)
 		messages = db("SELECT id, x, y, read, created, display, message FROM message_widget_archive ORDER BY created ASC")
 		for (msg_id, x, y, read, created, display, message) in messages:
-			msg = Message(x, y, msg_id, created, bool(read), bool(display), message)
+			msg = Message(point=Point(x, y), id=msg_id, created=created, read=bool(read), display=bool(display), message=message)
 			if msg_id == 'CHAT':
 				self.chat.append(msg)
 			else:
@@ -260,18 +274,22 @@ class Message(object):
 	@param x, y: int position on the map where the action took place.
 	@param id: message id string, needed to retrieve the message from the database.
 	@param created: tickid when the message was created. Keeps message order after load.
+	@param count: a unique message id number
 	@param message_dict: dict with strings to replace in the message, e.g. {'player': 'Arthus'}
 	"""
-	def __init__(self, x, y, id, created, read=False, display=None, message=None, message_dict=None, icon_id=None):
-		self.x, self.y = x, y
+	def __init__(self, point, id, created, msg_type=None, read=False, display=None, message=None, message_dict=None, icon_id=None):
+		self.x, self.y = None, None
+		if point is not None:
+			self.x, self.y = point.x, point.y
 		self.id = id
+		self.type = msg_type
 		self.read = read
 		self.created = created
 		self.display = display if display is not None else horizons.main.db.get_msg_visibility(id)
 		icon = icon_id if icon_id else horizons.main.db.get_msg_icon_id(id)
 		self.up_image, self.down_image, self.hover_image = horizons.main.db.get_msg_icons(icon)
 		if message is not None:
-			assert isinstance(message, unicode)
+			assert isinstance(message, unicode), "Message is not unicode: %s" % message
 			self.message = message
 		else:
 			msg = _(horizons.main.db.get_msg_text(id))
@@ -279,7 +297,7 @@ class Message(object):
 				self.message = msg.format(**message_dict if message_dict is not None else {})
 			except KeyError as err:
 				self.message = msg
-				print u"Warning: Unsubstituted string {err} in {id} message \"{msg}\", dict {dic}".format(
+				print u'Warning: Unsubstituted string {err} in {id} message "{msg}", dict {dic}'.format(
 				       err=err, msg=msg, id=id, dic=message_dict)
 
 	def __repr__(self):

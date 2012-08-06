@@ -39,13 +39,13 @@ class SavegameUpgrader(object):
 		self.final_path = None
 
 	def _upgrade_to_rev49(self, db):
-		db("CREATE TABLE \"resource_overview_bar\" (object INTEGER NOT NULL, position INTEGER NOT NULL, resource INTEGER NOT NULL)")
+		db('CREATE TABLE "resource_overview_bar" (object INTEGER NOT NULL, position INTEGER NOT NULL, resource INTEGER NOT NULL)')
 
 	def _upgrade_to_rev50(self, db):
-		db("UPDATE stance set stance = \"hold_ground_stance\" where stance =\"hold_ground\"")
-		db("UPDATE stance set stance = \"none_stance\" where stance =\"none\"")
-		db("UPDATE stance set stance = \"flee_stance\" where stance =\"flee_stance\"")
-		db("UPDATE stance set stance = \"aggressive_stance\" where stance =\"aggressive\"")
+		db('UPDATE stance set stance = "hold_ground_stance" where stance = "hold_ground"')
+		db('UPDATE stance set stance = "none_stance" where stance = "none"')
+		db('UPDATE stance set stance = "flee_stance" where stance = "flee_stance"')
+		db('UPDATE stance set stance = "aggressive_stance" where stance = "aggressive"')
 
 	def _upgrade_to_rev51(self, db):
 		# add fire slot to settlers. Use direct numbers since only these work and they must never change.
@@ -96,7 +96,7 @@ class SavegameUpgrader(object):
 			   obj, 42, 6)
 
 	def _upgrade_to_rev56(self, db):
-		db("CREATE TABLE \"last_active_settlement\" ( type STRING NOT NULL, value INTEGER NOT NULL )")
+		db('CREATE TABLE "last_active_settlement" ( type STRING NOT NULL, value INTEGER NOT NULL )')
 		db("INSERT INTO last_active_settlement(type, value) VALUES(?, ?)", "LAST_NONE_FLAG", False)
 
 	def _upgrade_to_rev57(self, db):
@@ -127,22 +127,24 @@ class SavegameUpgrader(object):
 		# some production line id changes
 
 		# [(object id, old prod line id, new prod line id)]
-		changes = (33, 42, 923331670), (9, 18, 1335785398), (42, 57, 227255506), (20, 8, 21429697), (20, 1, 1953634498), (20, 4, 70113509), (20, 47, 1236502256), (20, 52, 2078307024), (20, 23, 2092896117), (20, 0, 208610842), (20, 28, 2053891886), (20, 2, 1265004933), (20, 51, 1253640427), (20, 3, 1849560830), (20, 7, 1654557398), (60, 0, 532714998), (19, 23, 2092896117), (63, 2, 2097838825), (63, 0, 87034972), (63, 1, 570450416), (63, 3, 359183511), (8, 2, 256812226), (26, 34, 1842760585), (49, 1, 1953634498), (46, 0, 344746552), (28, 36, 1510556113), (45, 56464472, 1907712664), (35, 45, 854772720), (55, 0, 1971678669), (40, 57, 227255506), (54, 0, 1971678669), (29, 37, 1698523401), (11, 11, 923331670), (18, 7, 1654557398), (5, 13, 1056282634)
+		changes = (33, 42, 923331670), (9, 18, 1335785398), (42, 57, 227255506), (20, 8, 21429697), (20, 1, 1953634498), (20, 4, 70113509), (20, 47, 1236502256), (20, 52, 2078307024), (20, 23, 2092896117), (20, 0, 208610842), (20, 28, 2053891886), (20, 2, 1265004933), (20, 51, 1253640427), (20, 3, 1849560830), (20, 7, 1654557398), (60, 0, 532714998), (19, 22, 2092896117), (63, 2, 2097838825), (63, 0, 87034972), (63, 1, 570450416), (63, 3, 359183511), (8, 2, 256812226), (26, 34, 1842760585), (49, 1, 1953634498), (46, 0, 344746552), (28, 36, 1510556113), (45, 56464472, 1907712664), (35, 45, 854772720), (55, 0, 1971678669), (40, 57, 227255506), (54, 0, 1971678669), (29, 37, 1698523401), (11, 11, 923331670), (18, 5, 1654557398), (5, 13, 1056282634)
 
 		for obj_type, old_prod_line, new_prod_line in changes:
 			for (obj, ) in db("SELECT rowid FROM building WHERE type = ?", obj_type):
 				db("UPDATE production SET prod_line_id = ? WHERE owner = ? and prod_line_id = ?", new_prod_line, obj, old_prod_line)
 
 	def _upgrade_to_rev61(self, db):
-		from horizons.component.settlerupgradecomponent import SettlerUpgradeComponent
+		from horizons.world.building.settler import SettlerUpgradeData
 
 		# settler upgrade lines used to be the same for several levels
 		for (settler, level) in db("SELECT rowid, level FROM building WHERE type = 3"):
 			#if settler == 100268:import pdb ; pdb.set_trace()
 			# the id used to always be 35
-			db("UPDATE production SET prod_line_id = ? WHERE owner = ? and prod_line_id = 35", SettlerUpgradeComponent.get_production_line_id( level + 1 ), settler)
+			db("UPDATE production SET prod_line_id = ? WHERE owner = ? and prod_line_id = 35", SettlerUpgradeData.get_production_line_id( level + 1 ), settler)
 
-
+	def _upgrade_to_rev62(self, db):
+		# added a message parameter to the logbook which needs to be saved
+		db("CREATE TABLE logbook_messages ( message STRING )")
 
 	def _upgrade(self):
 		# fix import loop
@@ -187,7 +189,8 @@ class SavegameUpgrader(object):
 				self._upgrade_to_rev60(db)
 			if rev < 61:
 				self._upgrade_to_rev61(db)
-
+			if rev < 62:
+				self._upgrade_to_rev62(db)
 
 			db('COMMIT')
 			db.close()
