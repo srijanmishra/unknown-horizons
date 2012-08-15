@@ -51,9 +51,15 @@ class View(ChangeListener):
 		self.layers = []
 		for i in xrange(0, LAYERS.NUM):
 			self.layers.append(self.map.createLayer(str(i), cellgrid))
-			self.layers[i].setPathingStrategy(fife.CELL_EDGES_ONLY)
+			self.layers[i].setPathingStrategy(fife.CELL_EDGES_AND_DIAGONALS)
+			if hasattr(self.layers[i], 'setWalkable'):
+				self.layers[i].setWalkable(True)
 
-		self.cam = self.map.addCamera("main", self.layers[len(self.layers) - 1],
+		if hasattr(self.map, 'initializeCellCaches'):
+			self.map.initializeCellCaches()
+			self.map.finalizeCellCaches()
+
+		self.cam = self.map.addCamera("main", self.layers[-1],
 		                               fife.Rect(0, 0,
 		                                         horizons.main.fife.engine_settings.getScreenWidth(),
 		                                         horizons.main.fife.engine_settings.getScreenHeight())
